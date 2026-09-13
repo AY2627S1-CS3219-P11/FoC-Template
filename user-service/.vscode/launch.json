@@ -7,10 +7,10 @@
       "request": "launch",
       "module": "uvicorn",
       "python": "${workspaceFolder}/.venv/bin/python",
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/src",
       "envFile": "${workspaceFolder}/.env",
       "args": [
-        "app.main:app",
+        "main:app",
         "--host",
         "127.0.0.1",
         "--port",

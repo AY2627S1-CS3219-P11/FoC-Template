@@ -3,7 +3,7 @@ from collections.abc import Iterator
 import psycopg
 from psycopg import Connection
 
-from app.core.config import settings
+from common.config_manager import settings
 
 
 def get_db_connection() -> Iterator[Connection]:

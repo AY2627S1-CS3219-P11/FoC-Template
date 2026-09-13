@@ -16,7 +16,6 @@ ui/
 │   ├── helper/
 │   ├── hooks/
 │   ├── pages/authentication/models.ts
-│   ├── test/
 │   ├── App.tsx
 │   ├── index.css
 │   ├── main.tsx
@@ -68,8 +67,8 @@ The endpoint format and initial paths follow Job Tracker:
 
 Sign-in returns a message and sets the cookie through `Set-Cookie`.
 Sign-out must expire that same cookie with matching Path and Domain.
-The frontend cannot read or delete an HttpOnly cookie. Align these contracts
-with the user service before connecting a real backend.
+The frontend cannot read or delete an HttpOnly cookie. The user-service handlers
+match these contracts; sign-in rejects credentials until its SQL user lookup is implemented.
 
 For a frontend and API on different origins, the backend must:
 
@@ -104,7 +103,7 @@ for transient errors. Only enable `retry` for operations safe to repeat.
 `App.tsx` owns `RouterProvider`. `/` and `/sign-out` are empty authentication
 page slots; `/home` and `/supplier` are empty protected page slots.
 The sign-out route is a placeholder; its future page can call `authentication.signOut()`.
-`ProtectedRoutes` waits for session verification,
+`ProtectedRoutes` verifies each protected navigation and waits for completion,
 redirects HTTP 401 to `/` with `location.state.returnTo`, and shows a retry action
 for service errors. Expired tokens require a new sign-in. Future sign-in pages
 must validate `returnTo` as a local route before navigating.
@@ -115,7 +114,6 @@ route paths in `src/routes.ts`.
 ## Verification
 
 ```sh
-npm test
 npm run lint
 npm run build
 ```

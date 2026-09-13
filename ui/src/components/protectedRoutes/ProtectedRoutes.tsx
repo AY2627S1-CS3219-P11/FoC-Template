@@ -7,10 +7,14 @@ import { routes } from '../../routes'
 type AuthenticationStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error'
 
 const ProtectedRoutes = () => {
-  const [status, setStatus] = useState<AuthenticationStatus>('loading')
+  const location = useLocation()
+  const [authentication, setAuthentication] = useState<{
+    locationKey: string
+    status: AuthenticationStatus
+  }>({ locationKey: location.key, status: 'loading' })
   const [attempt, setAttempt] = useState(0)
   const api = useCampusErrandsAPI()
-  const location = useLocation()
+  const status = authentication.locationKey === location.key ? authentication.status : 'loading'
 
   useEffect(() => {
     const controller = new AbortController()
@@ -21,18 +25,21 @@ const ProtectedRoutes = () => {
           signal: controller.signal,
           onUnauthenticated: () => {},
         })
-        if (!controller.signal.aborted) setStatus('authenticated')
+        if (!controller.signal.aborted) {
+          setAuthentication({ locationKey: location.key, status: 'authenticated' })
+        }
       } catch (error) {
         if (controller.signal.aborted) return
-        setStatus(error instanceof CampusErrandsAPIError && error.status === 401
-          ? 'unauthenticated'
-          : 'error')
+        setAuthentication({
+          locationKey: location.key,
+          status: error instanceof CampusErrandsAPIError && error.status === 401 ? 'unauthenticated' : 'error',
+        })
       }
     }
 
     void verify()
     return () => controller.abort()
-  }, [api.authentication, attempt])
+  }, [api.authentication, attempt, location.key])
 
   if (status === 'loading') return <p role="status">Checking your session…</p>
   if (status === 'error') {
@@ -40,7 +47,7 @@ const ProtectedRoutes = () => {
       <div role="alert">
         <p>Unable to verify your session.</p>
         <button type="button" onClick={() => {
-          setStatus('loading')
+          setAuthentication({ locationKey: location.key, status: 'loading' })
           setAttempt((value) => value + 1)
         }}>Try again</button>
       </div>
