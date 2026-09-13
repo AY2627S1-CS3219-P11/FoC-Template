@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "User Service: FastAPI",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "args": [
+        "app.main:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "5005",
+        "--reload"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "subProcess": true,
+      "windows": {
+        "python": "${workspaceFolder}/.venv/Scripts/python.exe"
+      }
+    }
+  ]
+}
