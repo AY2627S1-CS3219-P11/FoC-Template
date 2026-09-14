@@ -21,7 +21,7 @@ const ProtectedRoutes = () => {
 
     const verify = async () => {
       try {
-        await api.authentication.verify({
+        await api.user.authentication.verify({
           signal: controller.signal,
           onUnauthenticated: () => {},
         })
@@ -39,7 +39,7 @@ const ProtectedRoutes = () => {
 
     void verify()
     return () => controller.abort()
-  }, [api.authentication, attempt, location.key])
+  }, [api.user.authentication, attempt, location.key])
 
   if (status === 'loading') return <p role="status">Checking your session…</p>
   if (status === 'error') {

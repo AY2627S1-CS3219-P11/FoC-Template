@@ -12,10 +12,18 @@ ui/
 │   │   ├── endpointConfig.ts
 │   │   ├── models.ts
 │   │   └── useCampusErrandsAPI.ts
-│   ├── components/protectedRoutes/ProtectedRoutes.tsx
+│   ├── components/
+│   │   ├── authLayout/
+│   │   ├── protectedRoutes/
+│   │   └── toast/
 │   ├── helper/
 │   ├── hooks/
-│   ├── pages/authentication/models.ts
+│   ├── pages/
+│   │   ├── authentication/
+│   │   │   ├── signIn/
+│   │   │   ├── signUp/
+│   │   │   └── models.ts
+│   │   └── home/
 │   ├── App.tsx
 │   ├── index.css
 │   ├── main.tsx
@@ -26,9 +34,7 @@ ui/
 └── vite.config.ts
 ```
 
-Empty directories contain only `.gitkeep` so Git preserves the structure.
-Page content is intentionally empty. The Vite demo and Job Tracker feature pages
-are not included.
+Empty helper and hook directories contain only `.gitkeep` so Git preserves the structure.
 
 ## Development
 
@@ -61,9 +67,10 @@ The endpoint format and initial paths follow Job Tracker:
 
 | Hook method | Method | Path |
 | --- | --- | --- |
-| `authentication.signIn({ email, password })` | POST | `/authentication/sessions` |
-| `authentication.verify()` | GET | `/authentication/sessions/current` |
-| `authentication.signOut()` | DELETE | `/authentication/sessions/current` |
+| `user.authentication.signIn({ email, password })` | POST | `/authentication/sessions` |
+| `user.authentication.signUp({ username, email, password })` | POST | `/authentication/users` |
+| `user.authentication.verify()` | GET | `/authentication/sessions/current` |
+| `user.authentication.signOut()` | DELETE | `/authentication/sessions/current` |
 
 Sign-in returns a message and sets the cookie through `Set-Cookie`.
 Sign-out must expire that same cookie with matching Path and Domain.
@@ -100,9 +107,12 @@ body fields, or query fields for GET. Add typed feature methods to
 The transport supports cancellation, a 30-second timeout, and optional retries
 for transient errors. Only enable `retry` for operations safe to repeat.
 
-`App.tsx` owns `RouterProvider`. `/` and `/sign-out` are empty authentication
-page slots; `/home` and `/supplier` are empty protected page slots.
-The sign-out route is a placeholder; its future page can call `authentication.signOut()`.
+`App.tsx` owns `RouterProvider`. `/` renders Sign In and `/sign-up` renders Sign Up
+outside the authentication guard. `/home` renders Home inside `ProtectedRoutes`.
+Home calls `user.authentication.signOut()` directly; sign-out is an action rather than a route.
+`ToastProvider` wraps the router and exposes error, success, and neutral notifications.
+Toasts use the Campus Errands light theme, dismiss automatically where appropriate,
+and do not display a countdown line.
 `ProtectedRoutes` verifies each protected navigation and waits for completion,
 redirects HTTP 401 to `/` with `location.state.returnTo`, and shows a retry action
 for service errors. Expired tokens require a new sign-in. Future sign-in pages

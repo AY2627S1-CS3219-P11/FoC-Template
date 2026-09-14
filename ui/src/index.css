@@ -1,16 +1,31 @@
 :root {
-  font-family: system-ui, sans-serif;
-  color-scheme: light dark;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  color: #283a31;
+  background: #f7f8f2;
+  color-scheme: light;
+  font-synthesis: none;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   margin: 0;
+  -webkit-font-smoothing: antialiased;
 }
 
 button, input, select, textarea {
   font: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #286749;
+  outline-offset: 3px;
 }
