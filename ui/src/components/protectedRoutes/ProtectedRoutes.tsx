@@ -17,19 +17,13 @@ const ProtectedRoutes = () => {
   const status = authentication.locationKey === location.key ? authentication.status : 'loading'
 
   useEffect(() => {
-    const controller = new AbortController()
-
     const verify = async () => {
       try {
         await api.user.authentication.verify({
-          signal: controller.signal,
           onUnauthenticated: () => {},
         })
-        if (!controller.signal.aborted) {
-          setAuthentication({ locationKey: location.key, status: 'authenticated' })
-        }
+        setAuthentication({ locationKey: location.key, status: 'authenticated' })
       } catch (error) {
-        if (controller.signal.aborted) return
         setAuthentication({
           locationKey: location.key,
           status: error instanceof CampusErrandsAPIError && error.status === 401 ? 'unauthenticated' : 'error',
@@ -38,7 +32,6 @@ const ProtectedRoutes = () => {
     }
 
     void verify()
-    return () => controller.abort()
   }, [api.user.authentication, attempt, location.key])
 
   if (status === 'loading') return <p role="status">Checking your session…</p>

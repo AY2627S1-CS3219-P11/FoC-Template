@@ -5,7 +5,6 @@ export type EndpointConfigEntry = {
     verb: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
     fieldMap?: Record<string, FieldType>;
     keepalive?: boolean;
-    retry?: boolean;
 };
 
 export type APIRequest = Record<string, unknown> | null;
@@ -19,14 +18,5 @@ export class CampusErrandsAPIError extends Error {
         this.name = 'CampusErrandsAPIError';
         this.status = status;
         this.data = data;
-    }
-}
-
-export class RetryableCampusErrandsAPIError extends CampusErrandsAPIError {}
-
-export class RetryableNetworkError extends TypeError {
-    constructor(error: TypeError) {
-        super(error.message, { cause: error });
-        this.name = error.name;
     }
 }

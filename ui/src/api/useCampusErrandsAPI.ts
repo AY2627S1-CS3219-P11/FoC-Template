@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { makeAuthenticatedCampusErrandsAPIRequest, makeCampusErrandsAPIRequest } from './api'
-import type { AuthenticatedRequestOptions, RequestOptions } from './api'
+import type { AuthenticatedRequestOptions } from './api'
 import { endpointConfig } from './endpointConfig'
 import type {
   SignInRequest,
@@ -15,21 +15,21 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
   authenticatedRequest: makeAuthenticatedCampusErrandsAPIRequest,
   user: {
     authentication: {
-      signIn: (request: SignInRequest, options?: RequestOptions) =>
+      signIn: (request: SignInRequest) =>
         makeCampusErrandsAPIRequest<SignInRequest, SignInResponse>(
-          request, endpointConfig.user.authentication.signIn, options,
+          request, endpointConfig.user.authentication.signIn,
         ),
-      signUp: (request: SignUpRequest, options?: RequestOptions) =>
+      signUp: (request: SignUpRequest) =>
         makeCampusErrandsAPIRequest<SignUpRequest, SignUpResponse>(
-          request, endpointConfig.user.authentication.signUp, options,
+          request, endpointConfig.user.authentication.signUp,
         ),
       verify: (options?: AuthenticatedRequestOptions) =>
         makeAuthenticatedCampusErrandsAPIRequest<null, unknown>(
           null, endpointConfig.user.authentication.verify, options,
         ),
-      signOut: (options?: RequestOptions) =>
+      signOut: () =>
         makeCampusErrandsAPIRequest<null, SignOutResponse>(
-          null, endpointConfig.user.authentication.signOut, options,
+          null, endpointConfig.user.authentication.signOut,
         ),
     },
   },

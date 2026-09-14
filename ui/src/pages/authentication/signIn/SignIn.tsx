@@ -23,11 +23,9 @@ const SignIn = () => {
   const returnTo = (location.state as AuthenticationNavigationState | null)?.returnTo
 
   useEffect(() => {
-    const controller = new AbortController()
-
     const verify = async () => {
       try {
-        await api.user.authentication.verify({ signal: controller.signal, onUnauthenticated: () => {} })
+        await api.user.authentication.verify({ onUnauthenticated: () => {} })
         navigate(returnTo ?? routes.home, { replace: true })
       } catch {
         return
@@ -35,7 +33,6 @@ const SignIn = () => {
     }
 
     void verify()
-    return () => controller.abort()
   }, [api.user.authentication, navigate, returnTo])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {

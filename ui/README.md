@@ -104,8 +104,8 @@ Add endpoint groups to `src/api/endpointConfig.ts` with `url`, `verb`, and optio
 `fieldMap` entries (`path`, `query`, or `formData`). Unmapped fields become JSON
 body fields, or query fields for GET. Add typed feature methods to
 `useCampusErrandsAPI`; generic `request` and `authenticatedRequest` are also available.
-The transport supports cancellation, a 30-second timeout, and optional retries
-for transient errors. Only enable `retry` for operations safe to repeat.
+The transport sends one request and returns the parsed response. Retry, timeout,
+and request-cancellation behavior can be added later if the application needs it.
 
 `App.tsx` owns `RouterProvider`. `/` renders Sign In and `/sign-up` renders Sign Up
 outside the authentication guard. `/home` renders Home inside `ProtectedRoutes`.
