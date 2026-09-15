@@ -19,8 +19,10 @@ class AuthenticationResponse(BaseModel):
 
 class UserRecord(BaseModel):
     id: str = Field(min_length=1)
+    username: str = Field(min_length=1)
     email: EmailStr
     hashed_password: str = Field(repr=False)
+    user_role: Literal["user", "admin", "admin_manager"]
 
 
 class AccessTokenClaims(BaseModel):

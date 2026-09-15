@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from common.config_manager import settings
 from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError
 from auth.models import AccessTokenClaims, SignInRequest, UserRecord
+from auth.repository import find_user_by_email
 
 
 def hash_password(password: str) -> str:
@@ -63,11 +64,6 @@ def verify_access_token(token: str) -> AccessTokenClaims:
 
 
 fallback_password_hash = hash_password(secrets.token_urlsafe(32))
-
-
-def find_user_by_email(email: str) -> UserRecord | None:
-    # TODO: add SQL query to find the user ID, email, and hashed password by normalized email.
-    return None
 
 
 def authenticate_user(credentials: SignInRequest) -> str:
