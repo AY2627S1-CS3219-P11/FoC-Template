@@ -1,11 +1,19 @@
-FROM python:3.10-slim
+FROM python:3.14-slim
+
+COPY --from=ghcr.io/astral-sh/uv:0.12.13 /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies as per uv.lock
+COPY pyproject.toml uv.lock ./
+
+RUN uv sync --locked --no-dev --no-install-project
 
 COPY . .
 
+# Use the virtualenv created by uv
+ENV PATH="/app/.venv/bin:$PATH"
+
 EXPOSE 3001
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "3001"]
+
+CMD ["fastapi", "run", "src/main.py", "--port", "3001"]

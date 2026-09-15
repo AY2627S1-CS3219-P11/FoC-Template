@@ -1,0 +1,16 @@
+{
+    "name": "Supplier Service",
+    "build": {
+        "dockerfile": "../Dockerfile",
+        "context": ".."
+    },
+    "remoteUser": "dev",
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:2": {
+        "username": "dev"
+        }
+    },
+    "workspaceFolder": "/workspace",
+    "overrideCommand": true,
+    "postCreateCommand": "uv sync"
+}
