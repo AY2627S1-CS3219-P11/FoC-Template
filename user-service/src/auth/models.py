@@ -1,6 +1,15 @@
+from enum import StrEnum
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator
+
+
+class UserRole(StrEnum):
+    USER = "user"
+    ADMIN = "admin"
+    ADMIN_MANAGER = "admin_manager"
+
 
 class SignUpRequest(BaseModel):
     username: str = Field(min_length=1, max_length=50)
@@ -26,16 +35,25 @@ class AuthenticationResponse(BaseModel):
     message: str
 
 
+class TokenVerificationResponse(AuthenticationResponse):
+    user_id: str = Field(min_length=1)
+
+
 class UserRecord(BaseModel):
-    id: str = Field(min_length=1)
+    id: UUID
     username: str = Field(min_length=1)
     email: EmailStr
     hashed_password: str = Field(repr=False)
-    user_role: Literal["user", "admin", "admin_manager"]
+    user_role: UserRole
+
+
+class UserRoleResponse(BaseModel):
+    user_id: UUID
+    role: UserRole
 
 
 class AccessTokenClaims(BaseModel):
-    sub: str = Field(min_length=1, strict=True)
+    sub: UUID
     email: EmailStr
     tokenType: Literal["access"]
     iat: int = Field(strict=True)

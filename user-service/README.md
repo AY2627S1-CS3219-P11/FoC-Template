@@ -55,7 +55,7 @@ Credentialed CORS is enabled to match the frontend's cookie-based requests.
 
 Authentication follows Job Tracker's bcrypt cost-10 password hashing and HS256
 JWT signing. Passwords are limited to 72 UTF-8 bytes. Access tokens expire after
-15 minutes. Store a cryptographically random `ACCESS_TOKEN_SECRET` of at least
+6 hours. Store a cryptographically random `ACCESS_TOKEN_SECRET` of at least
 32 bytes in the ignored `.env` or deployment secrets. It is a signing key, not a
 password hash or an access token. App name and CORS defaults stay in Python.
 
@@ -63,11 +63,12 @@ password hash or an access token. App name and CORS defaults stay in Python.
 | --- | --- | --- |
 | POST | `/authentication/sessions` | Verify password and issue an access-token cookie |
 | GET | `/authentication/sessions/current` | Validate the cookie's signature, expiry, and claims |
+| GET | `/authentication/sessions/current/role` | Return the current user's ID and database role |
 | DELETE | `/authentication/sessions/current` | Clear the cookie and return 204 |
 
-`src/auth/service.py` contains the SQL lookup placeholder. Until it is
-implemented, the lookup returns no user, so sign-in returns 401 and issues no token.
-There is no database query or database write in these handlers.
+`src/auth/repository.py` owns user database reads and writes. The current-role
+endpoint validates the access token and then reads the user's current role from the
+database. A missing user invalidates the session.
 
 The cookie is HttpOnly with `Path=/`, so it works through Vite and on the direct
 API origin. Local defaults are `cookie_secure=False` and `cookie_samesite="lax"`.

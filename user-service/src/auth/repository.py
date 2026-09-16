@@ -1,9 +1,12 @@
+from uuid import UUID
+
 from psycopg.rows import dict_row
 from psycopg.errors import UniqueViolation
 
 from common.db import get_db_connection
-from auth.models import UserRecord
 from auth.exceptions import UserAlreadyExistsError
+from auth.models import UserRecord, UserRoleResponse
+
 
 def create_user(username: str, email: str, hashed_password: str) -> UserRecord:
     try:
@@ -58,6 +61,24 @@ def find_user_by_username(username: str) -> UserRecord | None:
         return None
     return UserRecord(id=str(res["user_id"]), username=res["username"], 
                       email=res["user_email"], hashed_password=res["password_hash"], user_role=res["user_role"])
+
+
+def find_user_role_by_id(user_id: UUID) -> UserRoleResponse | None:
+    with get_db_connection() as db:
+        with db.cursor(row_factory=dict_row) as cs:
+            res = cs.execute(
+                """
+                SELECT user_id, user_role
+                FROM users
+                WHERE user_id = %s
+                """,
+                (user_id,),
+            ).fetchone()
+
+    if res is None:
+        return None
+    return UserRoleResponse(user_id=res["user_id"], role=res["user_role"])
+
 
 def update_username(user_id:str, new_username: str) -> UserRecord | None:
     with get_db_connection() as db:

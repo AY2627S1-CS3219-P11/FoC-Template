@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "Campus Errands User Service"
     database_url: SecretStr | None = None
     access_token_secret: SecretStr | None = None
-    access_token_duration_seconds: int = 15 * 60
+    access_token_duration_seconds: int = 6 * 60 * 60
     cookie_secure: bool = False
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"
     cors_origins: list[str] = [

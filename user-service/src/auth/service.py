@@ -6,9 +6,24 @@ import jwt
 from pydantic import ValidationError
 
 from common.config_manager import settings
-from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError, UserAlreadyExistsError
-from auth.models import AccessTokenClaims, SignInRequest, SignUpRequest, UserRecord
-from auth.repository import find_user_by_email, find_user_by_username, create_user
+from auth.exceptions import (
+    AuthenticationUnavailableError,
+    InvalidCredentialsError,
+    UserAlreadyExistsError,
+)
+from auth.models import (
+    AccessTokenClaims,
+    SignInRequest,
+    SignUpRequest,
+    UserRecord,
+    UserRoleResponse,
+)
+from auth.repository import (
+    create_user,
+    find_user_by_email,
+    find_user_by_username,
+    find_user_role_by_id,
+)
 
 
 def hash_password(password: str) -> str:
@@ -39,7 +54,7 @@ def create_access_token(user: UserRecord) -> str:
     now = datetime.now(timezone.utc)
     return jwt.encode(
         {
-            "sub": user.id,
+            "sub": str(user.id),
             "email": str(user.email),
             "tokenType": "access",
             "iat": now,
@@ -63,19 +78,28 @@ def verify_access_token(token: str) -> AccessTokenClaims:
         raise jwt.InvalidTokenError("Invalid access token claims.") from None
 
 
-fallback_password_hash = hash_password(secrets.token_urlsafe(32))
-
-
 def authenticate_user(credentials: SignInRequest) -> str:
     password = credentials.password.get_secret_value()
     if len(password.encode("utf-8")) > 72:
         raise InvalidCredentialsError()
+
     get_access_token_secret()
     user = find_user_by_email(str(credentials.email))
+    fallback_password_hash = hash_password(secrets.token_urlsafe(32))
     matches = verify_password(password, user.hashed_password if user else fallback_password_hash)
+
     if user is None or not matches:
         raise InvalidCredentialsError()
     return create_access_token(user)
+
+
+def get_current_user_role(token: str) -> UserRoleResponse:
+    claims = verify_access_token(token)
+    role = find_user_role_by_id(claims.sub)
+    if role is None:
+        raise jwt.InvalidTokenError("The authenticated user no longer exists.")
+    return role
+
 
 def register_user(request: SignUpRequest) -> UserRecord:
     existing_email = find_user_by_email(str(request.email))

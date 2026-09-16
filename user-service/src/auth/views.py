@@ -2,15 +2,29 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from jwt import InvalidTokenError
 from common.db import get_db_connection
 from common.config_manager import settings
-from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError, UserAlreadyExistsError
-from auth.service import authenticate_user, verify_access_token, register_user
-from auth.models import AuthenticationResponse, SignInRequest, SignUpRequest
+from auth.exceptions import (
+    AuthenticationUnavailableError,
+    InvalidCredentialsError,
+    UserAlreadyExistsError,
+)
+from auth.service import (
+    authenticate_user,
+    get_current_user_role,
+    verify_access_token,
+    register_user,
+)
+from auth.models import (
+    AuthenticationResponse,
+    SignInRequest,
+    SignUpRequest,
+    TokenVerificationResponse,
+    UserRoleResponse,
+)
 from auth.responses import clear_access_token_cookie, unauthorized_response
 
 
 router = APIRouter(prefix="/authentication", tags=["Authentication"])
 
-# TODO: check role/membership role
 
 @router.post("/users", status_code=201)
 def sign_up(credentials: SignUpRequest):
@@ -42,18 +56,32 @@ def sign_in(credentials: SignInRequest, response: Response):
     return AuthenticationResponse(message="Successfully signed in.")
 
 
-@router.get("/sessions/current", response_model=AuthenticationResponse)
+@router.get("/sessions/current", response_model=TokenVerificationResponse)
 def verify(request: Request):
     token = request.cookies.get("access_token")
+
     if not token:
         return unauthorized_response()
     try:
-        verify_access_token(token)
+        claims = verify_access_token(token)
     except InvalidTokenError:
         return unauthorized_response()
     except AuthenticationUnavailableError:
         raise HTTPException(status_code=503, detail="Authentication is temporarily unavailable.") from None
-    return AuthenticationResponse(message="Authenticated user.")
+    return TokenVerificationResponse(message="Authenticated user.", user_id=str(claims.sub))
+
+
+@router.get("/sessions/current/role", response_model=UserRoleResponse)
+def get_current_role(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        return unauthorized_response()
+    try:
+        return get_current_user_role(token)
+    except InvalidTokenError:
+        return unauthorized_response()
+    except AuthenticationUnavailableError:
+        raise HTTPException(status_code=503, detail="Authentication is temporarily unavailable.") from None
 
 
 @router.delete("/sessions/current", status_code=204)
