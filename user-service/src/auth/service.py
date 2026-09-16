@@ -6,8 +6,9 @@ import jwt
 from pydantic import ValidationError
 
 from common.config_manager import settings
-from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError
-from auth.models import AccessTokenClaims, SignInRequest, UserRecord
+from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError, UserAlreadyExistsError
+from auth.models import AccessTokenClaims, SignInRequest, SignUpRequest, UserRecord
+from auth.repository import find_user_by_email, find_user_by_username, create_user
 
 
 def hash_password(password: str) -> str:
@@ -65,11 +66,6 @@ def verify_access_token(token: str) -> AccessTokenClaims:
 fallback_password_hash = hash_password(secrets.token_urlsafe(32))
 
 
-def find_user_by_email(email: str) -> UserRecord | None:
-    # TODO: add SQL query to find the user ID, email, and hashed password by normalized email.
-    return None
-
-
 def authenticate_user(credentials: SignInRequest) -> str:
     password = credentials.password.get_secret_value()
     if len(password.encode("utf-8")) > 72:
@@ -80,3 +76,16 @@ def authenticate_user(credentials: SignInRequest) -> str:
     if user is None or not matches:
         raise InvalidCredentialsError()
     return create_access_token(user)
+
+def register_user(request: SignUpRequest) -> UserRecord:
+    existing_email = find_user_by_email(str(request.email))
+    if existing_email is not None:
+        raise UserAlreadyExistsError("Email already exists")
+
+    existing_username = find_user_by_username(request.username)
+    if existing_username is not None:
+        raise UserAlreadyExistsError("Username already exists")
+
+    hashed_password = hash_password(request.password.get_secret_value())
+
+    return create_user(username=request.username, email=str(request.email), hashed_password=hashed_password)

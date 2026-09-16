@@ -1,11 +1,14 @@
 from collections.abc import Iterator
 
+from contextlib import contextmanager
+
 import psycopg
 from psycopg import Connection
 
 from common.config_manager import settings
 
 
+@contextmanager
 def get_db_connection() -> Iterator[Connection]:
     if settings.database_url is None:
         raise RuntimeError("DATABASE_URL is not configured.")
