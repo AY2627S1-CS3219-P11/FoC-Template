@@ -1,41 +1,16 @@
-from urllib.parse import urlparse
-
 from fastapi import APIRouter, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
 from jwt import InvalidTokenError
 from common.db import get_db_connection
 from common.config_manager import settings
 from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError, UserAlreadyExistsError
 from auth.service import authenticate_user, verify_access_token, register_user
 from auth.models import AuthenticationResponse, SignInRequest, SignUpRequest
+from auth.responses import clear_access_token_cookie, unauthorized_response
 
 
 router = APIRouter(prefix="/authentication", tags=["Authentication"])
 
 # TODO: check role/membership role
-
-def validate_origin(request: Request) -> None:
-    origin = request.headers.get("origin")
-    if origin is not None and origin not in settings.cors_origins:
-        raise HTTPException(status_code=403, detail="Origin is not allowed.")
-    if origin is None and request.headers.get("sec-fetch-site") == "cross-site":
-        raise HTTPException(status_code=403, detail="Origin is not allowed.")
-
-
-def clear_access_token_cookie(response: Response) -> None:
-    response.delete_cookie(
-        "access_token",
-        path="/",
-        httponly=True,
-        secure=settings.cookie_secure,
-        samesite=settings.cookie_samesite,
-    )
-
-
-def unauthorized_response() -> JSONResponse:
-    response = JSONResponse(status_code=401, content={"message": "Invalid or expired token. Please sign in."})
-    clear_access_token_cookie(response)
-    return response
 
 @router.post("/users", status_code=201)
 def sign_up(credentials: SignUpRequest):
@@ -47,8 +22,7 @@ def sign_up(credentials: SignUpRequest):
     
 
 @router.post("/sessions", response_model=AuthenticationResponse)
-def sign_in(credentials: SignInRequest, request: Request, response: Response):
-    validate_origin(request)
+def sign_in(credentials: SignInRequest, response: Response):
     try:
         token = authenticate_user(credentials)
     except InvalidCredentialsError:
@@ -83,8 +57,7 @@ def verify(request: Request):
 
 
 @router.delete("/sessions/current", status_code=204)
-def sign_out(request: Request) -> Response:
-    validate_origin(request)
+def sign_out() -> Response:
     response = Response(status_code=204)
     clear_access_token_cookie(response)
     return response
