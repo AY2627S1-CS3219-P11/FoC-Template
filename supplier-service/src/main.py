@@ -41,7 +41,7 @@ class Supplier(Base):
     startingTime: Mapped[datetime.time]
     closingTime: Mapped[datetime.time]
     imageUrl: Mapped[str | None]
-    is_active: Mapped[bool] = True
+    is_active: Mapped[bool] = mapped_column(default=True)
 
 
 @lru_cache
