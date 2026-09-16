@@ -7,9 +7,10 @@ from enum import Enum
 from functools import lru_cache
 from itertools import islice
 from pathlib import Path
+from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import create_engine, insert, inspect, select
 from sqlalchemy.engine import Engine
@@ -19,7 +20,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 class Base(DeclarativeBase):
     pass
 
-class SupplierType(str, Enum):
+class Category(str, Enum):
     Food = "Food"
     Shopping = "Shopping"
     Printing = "Printing"
@@ -31,7 +32,7 @@ class Supplier(Base):
 
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     name: Mapped[str]
-    supplierType: Mapped[SupplierType]
+    category: Mapped[Category]
     building: Mapped[str]
     floor: Mapped[int]
     description: Mapped[str]
@@ -40,27 +41,6 @@ class Supplier(Base):
     startingTime: Mapped[datetime.time]
     closingTime: Mapped[datetime.time]
     imageUrl: Mapped[str | None]
-
-
-class SupplierResponse(BaseModel):
-    """Public JSON representation of a supplier database record."""
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    name: str
-    supplierType: SupplierType
-    building: str
-    floor: int
-    description: str
-    lattitude: float
-    longitude: float
-    startingTime: datetime.time
-    closingTime: datetime.time
-    imageUrl: str | None
-
-
-class SuppliersResponse(BaseModel):
-    suppliers: list[SupplierResponse]
 
 
 @lru_cache
@@ -83,7 +63,7 @@ class SupplierCsvRow(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     name: str = Field(validation_alias="Name")
-    supplierType: SupplierType = Field(validation_alias="Type")
+    category: Category = Field(validation_alias="Type")
     building: str = Field(validation_alias="Building")
     floor: int = Field(validation_alias="Floor")
     description: str = Field(validation_alias="Location Description")
@@ -157,11 +137,167 @@ def health_check():
     return {"status": "healthy", "service": "supplier-service"}
 
 
-@app.get("/suppliers", response_model=SuppliersResponse)
-def get_suppliers() -> SuppliersResponse:
+class SupplierResponse(BaseModel):
+    """Public JSON representation of a supplier database record."""
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    category: Category
+    building: str
+    floor: int
+    lattitude: float
+    longitude: float
+    description: str
+    startingTime: datetime.time
+    closingTime: datetime.time
+    imageUrl: str | None
+
+    @classmethod
+    def parse(cls, supplier: Supplier) -> SupplierResponse:
+        return cls.model_validate(supplier)
+
+@app.get("/suppliers")
+def get_suppliers() -> list[SupplierResponse]:
     try:
         with Session(get_engine()) as session:
             suppliers = session.scalars(select(Supplier)).all()
-            return SuppliersResponse(suppliers=suppliers)
+            return [SupplierResponse.parse(s) for s in suppliers]
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+
+def get_user():
+    return {"isAdmin":True}
+
+
+class SupplierCreate(BaseModel):
+    name: str
+    category: Category
+    building: str
+    floor: int
+    description: str
+    lattitude: float
+    longitude: float
+    startingTime: datetime.time
+    closingTime: datetime.time
+    imageUrl: str | None = None
+
+    def to_supplier(self) -> Supplier:
+        return Supplier(**self.model_dump())
+
+
+@app.post(
+    "/suppliers",
+    status_code=status.HTTP_201_CREATED,
+)
+def create_supplier(
+    user: Annotated[dict, Depends(get_user)],
+    create: SupplierCreate,
+) -> SupplierResponse:
+    if not user.get("isAdmin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    try:
+        with Session(get_engine()) as session:
+            supplier = create.to_supplier()
+            session.add(supplier)
+
+            session.commit()
+            session.refresh(supplier)
+            return SupplierResponse.parse(supplier)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not create supplier",
+        ) from error
+
+
+class SupplierUpdate(BaseModel):
+    name: str | None = None
+    category: Category | None = None
+    building: str | None = None
+    floor: int | None = None
+    lattitude: float | None = None
+    longitude: float | None = None
+    description: str | None = None
+    startingTime: datetime.time | None = None
+    closingTime: datetime.time | None = None
+    imageUrl: str | None = None
+
+
+@app.patch("/suppliers/{id}")
+def update_supplier(
+    id: UUID,
+    user: Annotated[dict, Depends(get_user)],
+    update: SupplierUpdate
+) -> SupplierResponse:
+    if not user.get("isAdmin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    try:
+        with Session(get_engine()) as session:
+            query = select(Supplier).where(Supplier.id == id)
+            supplier = session.scalars(query).one_or_none()
+            if not supplier:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, 
+                    detail="Supplier not found"
+                )
+                
+            # exclude_unset=True ignores fields omitted in the request
+            update_data = update.model_dump(exclude_unset=True)
+            
+            for key, value in update_data.items():
+                setattr(supplier, key, value)
+
+            session.commit()
+            session.refresh(supplier)
+            return SupplierResponse.parse(supplier)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not update supplier",
+        ) from error
+
+
+@app.delete("/suppliers/{id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_supplier(
+    id: UUID,
+    user: Annotated[dict, Depends(get_user)],
+) -> None:
+    if not user.get("isAdmin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required"
+        )
+    
+    try:
+        with Session(get_engine()) as session:
+            query = select(Supplier).where(Supplier.id == id)
+            supplier = session.scalars(query).one_or_none()
+            if not supplier:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, 
+                    detail="Supplier not found"
+                )
+                
+            session.delete(supplier)
+            session.commit()
+            return None
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not delete supplier",
+        ) from error
