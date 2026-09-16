@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import create_engine, insert, inspect, select
+from sqlalchemy import create_engine, inspect, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
@@ -41,6 +41,7 @@ class Supplier(Base):
     startingTime: Mapped[datetime.time]
     closingTime: Mapped[datetime.time]
     imageUrl: Mapped[str | None]
+    is_active: Mapped[bool] = True
 
 
 @lru_cache
@@ -83,20 +84,24 @@ class SupplierCsvRow(BaseModel):
     def blank_image_url_is_none(cls, value: str) -> str | None:
         return value.strip() or None
 
+    def to_supplier(self) -> Supplier:
+        """Create the ORM entity after this CSV row has been validated."""
+        return Supplier(**self.model_dump())
 
-def supplier_records(csv_path: Path) -> Iterator[dict[str, object]]:
-    """Validate CSV rows and convert them to Supplier insert records."""
+
+def supplier_records(csv_path: Path) -> Iterator[Supplier]:
+    """Validate CSV rows and convert them to Supplier entities."""
     with csv_path.open(newline="", encoding="cp1252") as file:
         for line_number, row in enumerate(csv.DictReader(file), start=2):
             try:
-                yield SupplierCsvRow.model_validate(row).model_dump()
+                yield SupplierCsvRow.model_validate(row).to_supplier()
             except ValidationError as error:
                 raise ValueError(
                     f"Invalid supplier CSV data on line {line_number}"
                 ) from error
 
 
-def batches(records: Iterable[dict[str, object]], size: int = 1_000):
+def batches(records: Iterable[Supplier], size: int = 1_000) -> Iterator[list[Supplier]]:
     """
     Splits an iterable into iterables of lists
     """
@@ -118,7 +123,7 @@ def seed_database_from_csv(engine: Engine, csv_path: Path) -> None:
     Base.metadata.create_all(engine)
     with Session(engine) as session:
         for batch in batches(supplier_records(csv_path)):
-            session.execute(insert(Supplier), batch)
+            session.add_all(batch)
         session.commit()
     print("Successfully seeded database from CSV file")
 
@@ -161,7 +166,8 @@ class SupplierResponse(BaseModel):
 def get_suppliers() -> list[SupplierResponse]:
     try:
         with Session(get_engine()) as session:
-            suppliers = session.scalars(select(Supplier)).all()
+            query = select(Supplier).where(Supplier.is_active)
+            suppliers = session.scalars(query).all()
             return [SupplierResponse.parse(s) for s in suppliers]
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
@@ -251,7 +257,13 @@ def update_supplier(
                     status_code=status.HTTP_404_NOT_FOUND, 
                     detail="Supplier not found"
                 )
-                
+
+            if not supplier.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, 
+                    detail="Supplier is not active"
+                )
+
             # exclude_unset=True ignores fields omitted in the request
             update_data = update.model_dump(exclude_unset=True)
             
@@ -290,8 +302,8 @@ def delete_supplier(
                     status_code=status.HTTP_404_NOT_FOUND, 
                     detail="Supplier not found"
                 )
-                
-            session.delete(supplier)
+
+            supplier.is_active = False
             session.commit()
             return None
     except HTTPException:
