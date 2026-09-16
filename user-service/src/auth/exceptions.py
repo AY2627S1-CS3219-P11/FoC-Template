@@ -4,3 +4,6 @@ class AuthenticationUnavailableError(RuntimeError):
 
 class InvalidCredentialsError(ValueError):
     pass
+
+class UserAlreadyExistsError(ValueError):
+    pass

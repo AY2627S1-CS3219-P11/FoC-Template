@@ -1,15 +1,18 @@
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from jwt import InvalidTokenError
-
+from common.db import get_db_connection
 from common.config_manager import settings
-from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError
-from auth.service import authenticate_user, verify_access_token
-from auth.models import AuthenticationResponse, SignInRequest
+from auth.exceptions import AuthenticationUnavailableError, InvalidCredentialsError, UserAlreadyExistsError
+from auth.service import authenticate_user, verify_access_token, register_user
+from auth.models import AuthenticationResponse, SignInRequest, SignUpRequest
 
 
 router = APIRouter(prefix="/authentication", tags=["Authentication"])
 
+# TODO: check role/membership role
 
 def validate_origin(request: Request) -> None:
     origin = request.headers.get("origin")
@@ -34,6 +37,14 @@ def unauthorized_response() -> JSONResponse:
     clear_access_token_cookie(response)
     return response
 
+@router.post("/users", status_code=201)
+def sign_up(credentials: SignUpRequest):
+    try:
+        user = register_user(credentials)
+    except UserAlreadyExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from None
+    return {"message": "Account created successfully. Please sign in to continue."}
+    
 
 @router.post("/sessions", response_model=AuthenticationResponse)
 def sign_in(credentials: SignInRequest, request: Request, response: Response):
