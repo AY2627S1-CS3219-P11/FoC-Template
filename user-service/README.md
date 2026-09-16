@@ -1,6 +1,6 @@
 # User Service
 
-Minimal FastAPI service for Campus Errands. Python 3.11 or newer is required.
+Minimal FastAPI service for Campus Errands. Python 3.14 or newer and uv are required.
 Authentication routes are scaffolded. There is no health endpoint or database schema.
 
 ```text
@@ -19,17 +19,16 @@ user-service/
 ├── .gitignore
 ├── .dockerignore
 ├── Dockerfile
-└── requirements.txt
+├── pyproject.toml
+└── uv.lock
 ```
 
 Run from `user-service/`:
 
 ```sh
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
+uv sync
 cp -n .env.example .env
-uvicorn main:app --app-dir src --reload --host 127.0.0.1 --port 5005
+uv run uvicorn main:app --app-dir src --reload --host 127.0.0.1 --port 5005
 ```
 
 API documentation is available at [localhost:5005/docs](http://localhost:5005/docs).
@@ -87,7 +86,7 @@ The app uses [FastAPI's CORS middleware](https://fastapi.tiangolo.com/tutorial/c
 Run checks:
 
 ```sh
-python -m pip check
+uv lock --check
 ```
 
 Set `DATABASE_URL` in the ignored `.env` file to the PostgreSQL connection URL.
