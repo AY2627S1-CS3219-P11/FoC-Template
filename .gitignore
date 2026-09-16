@@ -3,6 +3,10 @@ dist/
 build/
 out/
 
+# Python tool caches (at any repository depth)
+.mypy_cache/
+.ruff_cache/
+
 # Environment / secrets
 .env
 .env.local
