@@ -1,13 +1,17 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from common.config_manager import settings
+from common.request_security import validate_origin
 from auth.views import router as authentication_router
 
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(
+    title=settings.app_name,
+    dependencies=[Depends(validate_origin)],
+)
 
 
 @app.exception_handler(RequestValidationError)
