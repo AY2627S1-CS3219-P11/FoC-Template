@@ -74,8 +74,8 @@ The cookie is HttpOnly with `Path=/`, so it works through Vite and on the direct
 API origin. Local defaults are `cookie_secure=False` and `cookie_samesite="lax"`.
 For cross-site HTTPS deployment, configure `COOKIE_SECURE=true` and
 `COOKIE_SAMESITE=none` in the deployment environment. Browser third-party cookie
-policies can still restrict cross-site cookies. State-changing requests reject
-untrusted browser origins; configure the trusted frontend origins explicitly.
+policies can still restrict cross-site cookies. Configure trusted frontend origins
+explicitly so CORS permits browsers to read responses only from those origins.
 
 There are no refresh tokens or session-table writes. Sign-out clears the browser
 cookie; a separately copied token remains valid until expiry without server-side
