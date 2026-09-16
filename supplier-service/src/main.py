@@ -1,7 +1,7 @@
 import csv
 import datetime
 import os
-from collections.abc import Iterable, Iterator
+from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
 from enum import Enum
 from functools import lru_cache
@@ -12,13 +12,19 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from sqlalchemy import create_engine, inspect, select
-from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from sqlalchemy import inspect, select
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 class Base(DeclarativeBase):
     pass
+
 
 class Category(str, Enum):
     Food = "Food"
@@ -45,22 +51,29 @@ class Supplier(Base):
 
 
 @lru_cache
-def get_engine() -> Engine:
-    """Create and reuse the service's PostgreSQL connection pool."""
+def get_engine() -> AsyncEngine:
+    """Create and reuse the service's asynchronous PostgreSQL connection pool."""
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         raise RuntimeError("DATABASE_URL must be set")
 
-    return create_engine(
+    return create_async_engine(
         database_url,
         pool_pre_ping=True,
         connect_args={"connect_timeout": 5},
     )
 
 
+async def get_session() -> AsyncIterator[AsyncSession]:
+    """Provide one asynchronous database session per request."""
+    session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
+    async with session_factory() as session:
+        yield session
+
+
 class SupplierCsvRow(BaseModel):
     """Validated representation of a supplier row in the seed CSV."""
-    # automatically remove whitespace and trimming
+
     model_config = ConfigDict(str_strip_whitespace=True)
 
     name: str = Field(validation_alias="Name")
@@ -85,7 +98,6 @@ class SupplierCsvRow(BaseModel):
         return value.strip() or None
 
     def to_supplier(self) -> Supplier:
-        """Create the ORM entity after this CSV row has been validated."""
         return Supplier(**self.model_dump())
 
 
@@ -102,48 +114,62 @@ def supplier_records(csv_path: Path) -> Iterator[Supplier]:
 
 
 def batches(records: Iterable[Supplier], size: int = 1_000) -> Iterator[list[Supplier]]:
-    """
-    Splits an iterable into iterables of lists
-    """
-    # overkill for this project; but I find it much cleaner
+    """Split an iterable into lists of at most ``size`` records."""
     iterator = iter(records)
     while batch := list(islice(iterator, size)):
         yield batch
 
-def seed_database_from_csv(engine: Engine, csv_path: Path) -> None:
+
+async def seed_database_from_csv(engine: AsyncEngine, csv_path: Path) -> None:
     if not csv_path.is_file():
         print(f"Seed CSV not found at {csv_path}, skipping seeding")
         return
 
-    # Seed exactly once when this service creates its suppliers table.
-    if inspect(engine).has_table(Supplier.__tablename__):
-        print("Suppliers table already exists, skipping seeding")
-        return
+    async with engine.begin() as connection:
+        table_exists = await connection.run_sync(
+            lambda sync_connection: inspect(sync_connection).has_table(
+                Supplier.__tablename__
+            )
+        )
+        if table_exists:
+            print("Suppliers table already exists, skipping seeding")
+            return
 
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
+        await connection.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with session_factory() as session:
         for batch in batches(supplier_records(csv_path)):
             session.add_all(batch)
-        session.commit()
+        await session.commit()
     print("Successfully seeded database from CSV file")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Resolve from this module, rather than the process working directory.
-    csv_path = Path(__file__).resolve().parent.parent / "data" / "csv" / "supplier-seed-data.csv"
-    seed_database_from_csv(get_engine(), csv_path)
+    csv_path = (
+        Path(__file__).resolve().parent.parent
+        / "data"
+        / "csv"
+        / "supplier-seed-data.csv"
+    )
+    engine = get_engine()
+    await seed_database_from_csv(engine, csv_path)
     yield
+    await engine.dispose()
+
 
 app = FastAPI(title="Supplier Service", lifespan=lifespan)
 
+
 @app.get("/health")
-def health_check():
+async def health_check():
     return {"status": "healthy", "service": "supplier-service"}
 
 
 class SupplierResponse(BaseModel):
     """Public JSON representation of a supplier database record."""
+
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
@@ -159,21 +185,25 @@ class SupplierResponse(BaseModel):
     imageUrl: str | None
 
     @classmethod
-    def parse(cls, supplier: Supplier) -> SupplierResponse:
+    def parse(cls, supplier: Supplier) -> "SupplierResponse":
         return cls.model_validate(supplier)
 
+
 @app.get("/suppliers")
-def get_suppliers() -> list[SupplierResponse]:
+async def get_suppliers(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[SupplierResponse]:
     try:
-        with Session(get_engine()) as session:
-            query = select(Supplier).where(Supplier.is_active)
-            suppliers = session.scalars(query).all()
-            return [SupplierResponse.parse(s) for s in suppliers]
+        suppliers = await session.scalars(
+            select(Supplier).where(Supplier.is_active)
+        )
+        return [SupplierResponse.parse(supplier) for supplier in suppliers.all()]
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
 
-def get_user():
-    return {"isAdmin":True}
+
+async def get_user():
+    return {"isAdmin": True}
 
 
 class SupplierCreate(BaseModel):
@@ -192,31 +222,26 @@ class SupplierCreate(BaseModel):
         return Supplier(**self.model_dump())
 
 
-@app.post(
-    "/suppliers",
-    status_code=status.HTTP_201_CREATED,
-)
-def create_supplier(
+@app.post("/suppliers", status_code=status.HTTP_201_CREATED)
+async def create_supplier(
     user: Annotated[dict, Depends(get_user)],
     create: SupplierCreate,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SupplierResponse:
     if not user.get("isAdmin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            detail="Admin access required",
         )
-    
-    try:
-        with Session(get_engine()) as session:
-            supplier = create.to_supplier()
-            session.add(supplier)
 
-            session.commit()
-            session.refresh(supplier)
-            return SupplierResponse.parse(supplier)
-    except HTTPException:
-        raise
+    try:
+        supplier = create.to_supplier()
+        session.add(supplier)
+        await session.commit()
+        await session.refresh(supplier)
+        return SupplierResponse.parse(supplier)
     except Exception as error:
+        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not create supplier",
@@ -237,45 +262,36 @@ class SupplierUpdate(BaseModel):
 
 
 @app.patch("/suppliers/{id}")
-def update_supplier(
+async def update_supplier(
     id: UUID,
     user: Annotated[dict, Depends(get_user)],
-    update: SupplierUpdate
+    update: SupplierUpdate,
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SupplierResponse:
     if not user.get("isAdmin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            detail="Admin access required",
         )
-    
+
     try:
-        with Session(get_engine()) as session:
-            query = select(Supplier).where(Supplier.id == id)
-            supplier = session.scalars(query).one_or_none()
-            if not supplier:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, 
-                    detail="Supplier not found"
-                )
+        supplier = await session.scalar(select(Supplier).where(Supplier.id == id))
+        if not supplier or not supplier.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Supplier not found",
+            )
 
-            if not supplier.is_active:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, 
-                    detail="Supplier is not active"
-                )
+        for key, value in update.model_dump(exclude_unset=True).items():
+            setattr(supplier, key, value)
 
-            # exclude_unset=True ignores fields omitted in the request
-            update_data = update.model_dump(exclude_unset=True)
-            
-            for key, value in update_data.items():
-                setattr(supplier, key, value)
-
-            session.commit()
-            session.refresh(supplier)
-            return SupplierResponse.parse(supplier)
+        await session.commit()
+        await session.refresh(supplier)
+        return SupplierResponse.parse(supplier)
     except HTTPException:
         raise
     except Exception as error:
+        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not update supplier",
@@ -283,32 +299,31 @@ def update_supplier(
 
 
 @app.delete("/suppliers/{id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_supplier(
+async def delete_supplier(
     id: UUID,
     user: Annotated[dict, Depends(get_user)],
+    session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
     if not user.get("isAdmin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            detail="Admin access required",
         )
-    
-    try:
-        with Session(get_engine()) as session:
-            query = select(Supplier).where(Supplier.id == id)
-            supplier = session.scalars(query).one_or_none()
-            if not supplier:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, 
-                    detail="Supplier not found"
-                )
 
-            supplier.is_active = False
-            session.commit()
-            return None
+    try:
+        supplier = await session.scalar(select(Supplier).where(Supplier.id == id))
+        if not supplier:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Supplier not found",
+            )
+
+        supplier.is_active = False
+        await session.commit()
     except HTTPException:
         raise
     except Exception as error:
+        await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not delete supplier",

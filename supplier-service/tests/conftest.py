@@ -1,31 +1,34 @@
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import StaticPool
 
 import main
 
 
 @pytest.fixture
-def client(monkeypatch):
-    """A client backed by a fresh, in-memory database for one test."""
-    engine = create_engine(
-        "sqlite://",
+def anyio_backend():
+    return "asyncio"
+
+
+@pytest.fixture
+async def client(monkeypatch):
+    """An async client backed by a fresh in-memory database for one test."""
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-
-    # Production code calls get_engine() directly, so replace it for this test.
     monkeypatch.setattr(main, "get_engine", lambda: engine)
-    # Do not load the real CSV: create only the empty schema needed by the test.
-    monkeypatch.setattr(
-        main,
-        "seed_database_from_csv",
-        lambda _engine, _csv_path: main.Base.metadata.create_all(engine),
-    )
 
-    with TestClient(main.app) as test_client:
+    async with engine.begin() as connection:
+        await connection.run_sync(main.Base.metadata.create_all)
+
+    transport = ASGITransport(app=main.app)
+    async with AsyncClient(transport=transport, base_url="http://test") as test_client:
         yield test_client
 
     main.app.dependency_overrides.clear()
-    main.Base.metadata.drop_all(engine)
+    async with engine.begin() as connection:
+        await connection.run_sync(main.Base.metadata.drop_all)
+    await engine.dispose()

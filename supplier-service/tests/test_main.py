@@ -1,3 +1,4 @@
+import pytest
 from fastapi import status
 
 import main
@@ -16,16 +17,17 @@ SUPPLIER = {
 }
 
 
-def create_supplier(client, **changes):
+async def create_supplier(client, **changes):
     """Create a supplier and return the response JSON for tests that need one."""
     payload = SUPPLIER | changes
-    response = client.post("/suppliers", json=payload)
+    response = await client.post("/suppliers", json=payload)
     assert response.status_code == status.HTTP_201_CREATED
     return response.json()
 
 
-def test_health(client):
-    response = client.get("/health")
+@pytest.mark.anyio
+async def test_health(client):
+    response = await client.get("/health")
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {
@@ -34,24 +36,26 @@ def test_health(client):
     }
 
 
-def test_create_supplier(client):
-    supplier = create_supplier(client)
+@pytest.mark.anyio
+async def test_create_supplier(client):
+    supplier = await create_supplier(client)
 
     assert supplier["name"] == "Test Cafe"
     assert supplier["category"] == "Food"
     assert supplier["imageUrl"] is None
     assert "id" in supplier
 
-    response = client.get("/suppliers")
+    response = await client.get("/suppliers")
 
     assert response.status_code == status.HTTP_200_OK
     assert [item["id"] for item in response.json()] == [supplier["id"]]
 
 
-def test_patch_supplier_changes_only_sent_fields(client):
-    supplier = create_supplier(client)
+@pytest.mark.anyio
+async def test_patch_supplier_changes_only_sent_fields(client):
+    supplier = await create_supplier(client)
 
-    response = client.patch(
+    response = await client.patch(
         f"/suppliers/{supplier['id']}",
         json={"name": "Renamed Cafe", "floor": 2},
     )
@@ -61,11 +65,12 @@ def test_patch_supplier_changes_only_sent_fields(client):
     assert updated["id"] == supplier["id"]
     assert updated["name"] == "Renamed Cafe"
     assert updated["floor"] == 2
-    assert updated["building"] == "COM1"  # omitted fields were not overwritten
+    assert updated["building"] == "COM1"
 
 
-def test_patch_unknown_supplier_returns_404(client):
-    response = client.patch(
+@pytest.mark.anyio
+async def test_patch_unknown_supplier_returns_404(client):
+    response = await client.patch(
         "/suppliers/00000000-0000-0000-0000-000000000000",
         json={"name": "Does not exist"},
     )
@@ -74,23 +79,25 @@ def test_patch_unknown_supplier_returns_404(client):
     assert response.json()["detail"] == "Supplier not found"
 
 
-def test_delete_supplier_hides_it_from_list(client):
-    supplier = create_supplier(client)
+@pytest.mark.anyio
+async def test_delete_supplier_hides_it_from_list(client):
+    supplier = await create_supplier(client)
 
-    response = client.delete(f"/suppliers/{supplier['id']}")
+    response = await client.delete(f"/suppliers/{supplier['id']}")
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert response.content == b""
 
-    list_response = client.get("/suppliers")
+    list_response = await client.get("/suppliers")
     assert list_response.status_code == status.HTTP_200_OK
     assert list_response.json() == []
 
 
-def test_non_admin_cannot_create_supplier(client):
+@pytest.mark.anyio
+async def test_non_admin_cannot_create_supplier(client):
     main.app.dependency_overrides[main.get_user] = lambda: {"isAdmin": False}
 
-    response = client.post("/suppliers", json=SUPPLIER)
+    response = await client.post("/suppliers", json=SUPPLIER)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert response.json()["detail"] == "Admin access required"
