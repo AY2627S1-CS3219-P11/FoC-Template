@@ -80,6 +80,8 @@ const SignUp = () => {
               disabled={isPending}
               minLength={8}
               maxLength={64}
+              pattern="(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9]).{8,64}"
+              title="Use 8–64 characters with at least one uppercase letter, one lowercase letter, and one digit."
               aria-describedby="password-hint"
               required
             />
@@ -93,7 +95,7 @@ const SignUp = () => {
               {passwordVisible ? 'Hide' : 'Show'}
             </button>
           </div>
-          <p className={styles.hint} id="password-hint">Use 8–64 characters.</p>
+          <p className={styles.hint} id="password-hint">Use 8–64 characters with at least one uppercase letter, one lowercase letter, and one digit.</p>
         </div>
         <p className={styles.welcomeCredits}>100 welcome credits are added automatically when you join.</p>
         <button className={styles.submit} type="submit" disabled={isPending}>
