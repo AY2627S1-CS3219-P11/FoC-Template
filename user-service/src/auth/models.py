@@ -54,10 +54,6 @@ class AuthenticationResponse(BaseModel):
     message: str
 
 
-class TokenVerificationResponse(AuthenticationResponse):
-    user_id: str = Field(min_length=1)
-
-
 class UserRecord(BaseModel):
     id: UUID
     username: str = Field(min_length=1)
