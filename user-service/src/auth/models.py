@@ -1,8 +1,8 @@
 from enum import StrEnum
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator, model_validator
 
 
 PASSWORD_REQUIREMENTS_MESSAGE = (
@@ -69,6 +69,32 @@ class UserRecord(BaseModel):
 class UserRoleResponse(BaseModel):
     user_id: UUID
     role: UserRole
+
+
+class CurrentUserResponse(BaseModel):
+    username: str
+    email: EmailStr
+
+
+class UpdateCurrentUserRequest(BaseModel):
+    username: str | None = Field(default=None, min_length=1, max_length=50)
+    email: EmailStr | None = None
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalize_username(cls, value: object) -> object:
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value: object) -> object:
+        return value.strip().lower() if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def require_update(self) -> Self:
+        if self.username is None and self.email is None:
+            raise ValueError("Provide a username or email to update.")
+        return self
 
 
 class AccessTokenClaims(BaseModel):
