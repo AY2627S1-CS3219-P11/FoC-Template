@@ -7,6 +7,9 @@ import { useToast } from '../../../components/toast/useToast'
 import { routes } from '../../../routes'
 import styles from '../Authentication.module.css'
 
+const PASSWORD_REQUIREMENTS_MESSAGE = 'Password must be 8–64 characters and include at least one uppercase letter, one lowercase letter, and one digit.'
+const PASSWORD_REQUIREMENTS_PATTERN = /^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9]).{8,64}$/
+
 const SignUp = () => {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -19,6 +22,12 @@ const SignUp = () => {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+
+    if (!PASSWORD_REQUIREMENTS_PATTERN.test(password)) {
+      showErrorToast(PASSWORD_REQUIREMENTS_MESSAGE)
+      return
+    }
+
     setIsPending(true)
 
     try {
@@ -81,6 +90,7 @@ const SignUp = () => {
               minLength={8}
               maxLength={64}
               aria-describedby="password-hint"
+              onInvalid={() => showErrorToast(PASSWORD_REQUIREMENTS_MESSAGE)}
               required
             />
             <button
@@ -93,7 +103,7 @@ const SignUp = () => {
               {passwordVisible ? 'Hide' : 'Show'}
             </button>
           </div>
-          <p className={styles.hint} id="password-hint">Use 8–64 characters.</p>
+          <p className={styles.hint} id="password-hint">Use 8–64 characters with at least one uppercase letter, one lowercase letter, and one digit.</p>
         </div>
         <p className={styles.welcomeCredits}>100 welcome credits are added automatically when you join.</p>
         <button className={styles.submit} type="submit" disabled={isPending}>

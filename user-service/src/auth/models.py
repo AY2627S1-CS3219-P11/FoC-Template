@@ -5,6 +5,12 @@ from uuid import UUID
 from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator
 
 
+PASSWORD_REQUIREMENTS_MESSAGE = (
+    "Password must be 8-64 characters and include at least one uppercase letter, "
+    "one lowercase letter, and one digit."
+)
+
+
 class UserRole(StrEnum):
     USER = "user"
     ADMIN = "admin"
@@ -20,6 +26,19 @@ class SignUpRequest(BaseModel):
     @classmethod
     def normalize_email(cls, value: object) -> object:
         return value.strip().lower() if isinstance(value, str) else value
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_requirements(cls, value: SecretStr) -> SecretStr:
+        password = value.get_secret_value()
+        if not (
+            any("A" <= character <= "Z" for character in password)
+            and any("a" <= character <= "z" for character in password)
+            and any("0" <= character <= "9" for character in password)
+        ):
+            raise ValueError(PASSWORD_REQUIREMENTS_MESSAGE)
+        return value
+
 
 class SignInRequest(BaseModel):
     email: EmailStr
