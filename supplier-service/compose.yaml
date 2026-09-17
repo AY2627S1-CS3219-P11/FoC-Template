@@ -6,11 +6,14 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-supplier}:${POSTGRES_PASSWORD:-supplier}@supplier-db:5432/${POSTGRES_DB:-supplier}
+      USER_SERVICE_URL: ${USER_SERVICE_URL:-http://host.docker.internal:5005}
     ports:
       - "3001:3001"
     depends_on:
       supplier-db:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   supplier-db:
     image: postgres:17-alpine

@@ -1,6 +1,8 @@
 export type FieldType = 'formData' | 'path' | 'query';
+export type APIService = 'supplier' | 'user';
 
 export type EndpointConfigEntry = {
+    service: APIService;
     url: string;
     verb: 'DELETE' | 'GET' | 'PATCH' | 'POST' | 'PUT';
     fieldMap?: Record<string, FieldType>;

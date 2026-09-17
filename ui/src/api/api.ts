@@ -1,8 +1,11 @@
-import type { APIRequest, EndpointConfigEntry } from './models';
+import type { APIRequest, APIService, EndpointConfigEntry } from './models';
 import { CampusErrandsAPIError } from './models';
 import { routes } from '../routes';
 
-const apiUrl = import.meta.env.VITE_API_URL || '/api';
+const apiUrls: Record<APIService, string> = {
+    supplier: import.meta.env.VITE_SUPPLIER_API_URL || '/supplier-api',
+    user: import.meta.env.VITE_API_URL || '/api',
+};
 const PUBLIC_ROUTES = new Set<string>([routes.signIn]);
 type RequestDetails = {
     init: RequestInit;
@@ -28,7 +31,7 @@ const appendQueryValue = (query: URLSearchParams, field: string, value: unknown)
 };
 
 const buildRequest = (request: APIRequest, config: EndpointConfigEntry): RequestDetails => {
-    let url = `${apiUrl.replace(/\/$/, '')}/${config.url.replace(/^\//, '')}`;
+    let url = `${apiUrls[config.service].replace(/\/$/, '')}/${config.url.replace(/^\//, '')}`;
     const body: Record<string, unknown> = {};
     const query = new URLSearchParams();
     let formData: FormData | undefined;

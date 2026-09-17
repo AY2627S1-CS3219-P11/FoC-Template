@@ -27,6 +27,8 @@
   font-weight: 600;
   line-height: 0.88;
   letter-spacing: -0.055em;
+  color: inherit;
+  text-decoration: none;
 }
 
 .wordmark em {
@@ -34,14 +36,32 @@
   font-weight: 400;
 }
 
+.header nav {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.header nav a,
+.header button {
+  color: #526257;
+  font-size: .86rem;
+  text-decoration: none;
+}
+
+.header nav a[aria-current='page'] {
+  color: #283a31;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
+}
+
 .header button {
   min-height: 44px;
   padding: 0 18px;
   color: #286749;
   background: transparent;
-  border: 1px solid #bfcab7;
-  border-radius: 5px;
-  font-weight: 700;
+  border: 0;
   cursor: pointer;
 }
 
@@ -58,6 +78,34 @@
   width: min(1120px, calc(100% - 48px));
   margin: auto;
   padding: 72px 0 90px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 250px;
+  gap: 70px;
+  align-items: end;
+}
+
+.hero aside {
+  padding: 18px 0 18px 32px;
+  display: grid;
+  border-left: 1px solid #ccd5c5;
+}
+
+.hero aside strong {
+  margin: 10px 0;
+  font-family: Georgia, serif;
+  font-size: 4rem;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.hero aside p {
+  margin: 0;
+  color: #626e63;
+  font-size: .82rem;
+  line-height: 1.65;
 }
 
 .eyebrow {
@@ -79,12 +127,33 @@
   line-height: 0.98;
 }
 
+.main h1 em {
+  color: #426549;
+  font-weight: 400;
+}
+
 .intro {
   max-width: 56ch;
   margin: 0;
   color: #626e63;
   font-size: 0.98rem;
   line-height: 1.75;
+}
+
+.primaryAction {
+  width: fit-content;
+  min-height: 46px;
+  margin-top: 30px;
+  padding: 0 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+  color: white;
+  background: #286749;
+  border-radius: 5px;
+  font-size: .86rem;
+  font-weight: 700;
+  text-decoration: none;
 }
 
 .cards {
@@ -127,6 +196,14 @@
   line-height: 1.65;
 }
 
+.cards a {
+  margin-top: 18px;
+  display: inline-block;
+  color: #286749;
+  font-size: .8rem;
+  font-weight: 700;
+}
+
 .footer {
   width: min(1120px, calc(100% - 48px));
   margin: 0 auto;
@@ -149,6 +226,27 @@
 
   .main h1 {
     font-size: clamp(3rem, 14vw, 4.8rem);
+  }
+
+  .header {
+    align-items: flex-start;
+  }
+
+  .header nav {
+    gap: 13px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .hero {
+    grid-template-columns: 1fr;
+    gap: 38px;
+  }
+
+  .hero aside {
+    padding: 18px 0 0;
+    border-top: 1px solid #ccd5c5;
+    border-left: 0;
   }
 
   .cards {

@@ -3,6 +3,7 @@ import ProtectedRoutes from './components/protectedRoutes/ProtectedRoutes'
 import SignIn from './pages/authentication/signIn/SignIn'
 import SignUp from './pages/authentication/signUp/SignUp'
 import Home from './pages/home/Home'
+import Suppliers from './pages/suppliers/Suppliers'
 import { routes } from './routes'
 
 const appRoutes: RouteObject[] = [
@@ -12,6 +13,7 @@ const appRoutes: RouteObject[] = [
     element: <ProtectedRoutes />,
     children: [
       { path: routes.home, element: <Home /> },
+      { path: routes.suppliers, element: <Suppliers /> },
     ],
   },
   { path: '*', element: <p>Page not found.</p> },
