@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { CampusErrandsAPIError } from '../../api/models'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { routes } from '../../routes'
+import styles from './ProtectedRoutes.module.css'
 
 type AuthenticationStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error'
 
@@ -27,7 +28,7 @@ const ProtectedRoutes = () => {
     void verify()
   }, [api.user.authentication, attempt])
 
-  if (status === 'loading') return <p role="status">Checking your session…</p>
+  if (status === 'loading') return <p className={styles.status} role="status">Checking your session…</p>
   if (status === 'error') {
     return (
       <div role="alert">

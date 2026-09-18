@@ -1,0 +1,9 @@
+.status {
+  min-height: 100vh;
+  min-height: 100svh;
+  margin: 0;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
