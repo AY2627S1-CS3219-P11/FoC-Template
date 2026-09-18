@@ -8,13 +8,9 @@ type AuthenticationStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'e
 
 const ProtectedRoutes = () => {
   const location = useLocation()
-  const [authentication, setAuthentication] = useState<{
-    locationKey: string
-    status: AuthenticationStatus
-  }>({ locationKey: location.key, status: 'loading' })
+  const [status, setStatus] = useState<AuthenticationStatus>('loading')
   const [attempt, setAttempt] = useState(0)
   const api = useCampusErrandsAPI()
-  const status = authentication.locationKey === location.key ? authentication.status : 'loading'
 
   useEffect(() => {
     const verify = async () => {
@@ -22,17 +18,14 @@ const ProtectedRoutes = () => {
         await api.user.authentication.verify({
           onUnauthenticated: () => {},
         })
-        setAuthentication({ locationKey: location.key, status: 'authenticated' })
+        setStatus('authenticated')
       } catch (error) {
-        setAuthentication({
-          locationKey: location.key,
-          status: error instanceof CampusErrandsAPIError && error.status === 401 ? 'unauthenticated' : 'error',
-        })
+        setStatus(error instanceof CampusErrandsAPIError && error.status === 401 ? 'unauthenticated' : 'error')
       }
     }
 
     void verify()
-  }, [api.user.authentication, attempt, location.key])
+  }, [api.user.authentication, attempt])
 
   if (status === 'loading') return <p role="status">Checking your session…</p>
   if (status === 'error') {
@@ -40,7 +33,7 @@ const ProtectedRoutes = () => {
       <div role="alert">
         <p>Unable to verify your session.</p>
         <button type="button" onClick={() => {
-          setAuthentication({ locationKey: location.key, status: 'loading' })
+          setStatus('loading')
           setAttempt((value) => value + 1)
         }}>Try again</button>
       </div>
