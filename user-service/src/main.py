@@ -33,6 +33,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan,)
 
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "user-service",
+    }
 
 @app.exception_handler(RequestValidationError)
 async def invalid_request_handler(request: Request, exception: RequestValidationError):
@@ -52,3 +58,4 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
