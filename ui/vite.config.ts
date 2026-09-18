@@ -14,16 +14,16 @@ export default defineConfig(({ mode }) => {
           cookieDomainRewrite: '',
           rewrite: (path) => path.replace(/^\/supplier-api(?=\/|$)/, ''),
         },
-        '/api': {
+        '/user-api': {
           target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:5005',
           changeOrigin: true,
           cookieDomainRewrite: '',
-          rewrite: (path) => path.replace(/^\/api(?=\/|$)/, ''),
+          rewrite: (path) => path.replace(/^\/user-api(?=\/|$)/, ''),
         },
       },
     },
     define: {
-      'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || '/api'),
+      'import.meta.env.VITE_USER_API_URL': JSON.stringify(env.VITE_USER_API_URL || '/user-api'),
       'import.meta.env.VITE_SUPPLIER_API_URL': JSON.stringify(env.VITE_SUPPLIER_API_URL || '/supplier-api'),
     },
   }

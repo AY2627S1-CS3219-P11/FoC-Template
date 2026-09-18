@@ -4,7 +4,7 @@ import { routes } from '../routes';
 
 const apiUrls: Record<APIService, string> = {
     supplier: import.meta.env.VITE_SUPPLIER_API_URL || '/supplier-api',
-    user: import.meta.env.VITE_API_URL || '/api',
+    user: import.meta.env.VITE_USER_API_URL || '/user-api',
 };
 const PUBLIC_ROUTES = new Set<string>([routes.signIn]);
 type RequestDetails = {

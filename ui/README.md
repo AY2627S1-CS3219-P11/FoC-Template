@@ -31,7 +31,7 @@ VITE_SUPPLIER_API_PROXY_TARGET=http://127.0.0.1:3001 \
 npm run dev
 ```
 
-For deployments with an external gateway, set `VITE_API_URL` and `VITE_SUPPLIER_API_URL` at build time.
+For deployments with an external gateway, set `VITE_USER_API_URL` and `VITE_SUPPLIER_API_URL` at build time.
 
 ## Build
 
