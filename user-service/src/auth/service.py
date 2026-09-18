@@ -1,9 +1,11 @@
 from datetime import datetime, timedelta, timezone
 import secrets
+from uuid import UUID
 
 import bcrypt
 import jwt
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.config_manager import settings
 from auth.exceptions import (
@@ -82,13 +84,13 @@ def verify_access_token(token: str) -> AccessTokenClaims:
         raise jwt.InvalidTokenError("Invalid access token claims.") from None
 
 
-def authenticate_user(credentials: SignInRequest) -> str:
+async def authenticate_user(credentials: SignInRequest, session: AsyncSession) -> str:
     password = credentials.password.get_secret_value()
     if len(password.encode("utf-8")) > 72:
         raise InvalidCredentialsError()
 
     get_access_token_secret()
-    user = find_user_by_email(str(credentials.email))
+    user = await find_user_by_email(session, str(credentials.email))
     fallback_password_hash = hash_password(secrets.token_urlsafe(32))
     matches = verify_password(password, user.hashed_password if user else fallback_password_hash)
 
@@ -97,35 +99,37 @@ def authenticate_user(credentials: SignInRequest) -> str:
     return create_access_token(user)
 
 
-def get_current_user_role(user_id: UUID) -> UserRoleResponse:
-    role = find_user_role_by_id(user_id)
+async def get_current_user_role(user_id: UUID, session: AsyncSession) -> UserRoleResponse:
+    role = await find_user_role_by_id(session, user_id)
     if role is None:
         raise jwt.InvalidTokenError("The authenticated user no longer exists.")
     return role
 
 
-def get_current_user_profile(user_id: UUID) -> CurrentUserResponse:
-    profile = find_user_profile_by_id(user_id)
+async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> CurrentUserResponse:
+    profile = await find_user_profile_by_id(session, user_id)
     if profile is None:
         raise jwt.InvalidTokenError("The authenticated user no longer exists.")
     return profile
 
 
-def update_current_user_profile(
+async def update_current_user_profile(
     user_id: UUID,
-    request: UpdateCurrentUserRequest,
+    request: UpdateCurrentUserRequest, 
+    session: AsyncSession
 ) -> CurrentUserResponse:
     if request.username is not None:
-        existing_username = find_user_by_username(request.username)
-        if existing_username is not None and existing_username.id != user_id:
+        existing_username = await find_user_by_username(session, request.username)
+        if existing_username is not None and existing_username.id != str(user_id):
             raise UserAlreadyExistsError("Username already exists")
 
     if request.email is not None:
-        existing_email = find_user_by_email(str(request.email))
-        if existing_email is not None and existing_email.id != user_id:
+        existing_email = await find_user_by_email(session, str(request.email))
+        if existing_email is not None and existing_email.id != str(user_id):
             raise UserAlreadyExistsError("Email already exists")
 
-    profile = update_user_profile(
+    profile = await update_user_profile(
+        session=session, 
         user_id=user_id,
         username=request.username,
         email=str(request.email) if request.email is not None else None,
@@ -135,15 +139,16 @@ def update_current_user_profile(
     return profile
 
 
-def register_user(request: SignUpRequest) -> UserRecord:
-    existing_email = find_user_by_email(str(request.email))
+async def register_user(request: SignUpRequest, session: AsyncSession) -> UserRecord:
+    existing_email = await find_user_by_email(session, str(request.email))
     if existing_email is not None:
         raise UserAlreadyExistsError("Email already exists")
 
-    existing_username = find_user_by_username(request.username)
+    existing_username = await find_user_by_username(session, request.username)
     if existing_username is not None:
         raise UserAlreadyExistsError("Username already exists")
 
     hashed_password = hash_password(request.password.get_secret_value())
 
-    return create_user(username=request.username, email=str(request.email), hashed_password=hashed_password)
+    return await create_user(session=session, username=request.username,
+                              email=str(request.email), hashed_password=hashed_password)
