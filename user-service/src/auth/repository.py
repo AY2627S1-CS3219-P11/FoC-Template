@@ -1,124 +1,124 @@
 from uuid import UUID
 
-from psycopg.rows import dict_row
-from psycopg.errors import UniqueViolation
+import datetime
 
-from common.db import get_db_connection
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from auth.orm_models import User
+from auth.models import UserRecord, CurrentUserResponse, UserRoleResponse
 from auth.exceptions import UserAlreadyExistsError
-from auth.models import CurrentUserResponse, UserRecord, UserRoleResponse
 
+async def create_user(session: AsyncSession,
+                      username: str,email: str, hashed_password: str,) -> UserRecord:
 
-def create_user(username: str, email: str, hashed_password: str) -> UserRecord:
+    user = User(username=username, user_email=email, password_hash=hashed_password,)
+
+    session.add(user)
+
     try:
-        # email should already be normalized
-        with get_db_connection() as db:
-            with db.cursor(row_factory=dict_row) as cs:
-                res = cs.execute(
-                    """
-                    INSERT INTO users(username, user_email, password_hash)
-                    VALUES (%s, %s, %s)
-                    RETURNING user_id, username, user_email, password_hash, user_role
-                    """,
-                    (username, email, hashed_password),
-                ).fetchone()
-    except UniqueViolation:
-        raise UserAlreadyExistsError("Username or email already exists") from None
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
 
+        constraint = getattr(exc.orig.diag, "constraint_name", None,)
 
-    return UserRecord(id=str(res["user_id"]), username=res["username"], 
-                      email=res["user_email"], hashed_password=res["password_hash"], user_role=res["user_role"])
+        if constraint == "users_username_key" or constraint == "users_email_key":
+            raise UserAlreadyExistsError("Username or Email already exists.") from None
+        
+        raise
 
-def find_user_by_email(email: str) -> UserRecord | None:
-    with get_db_connection() as db:
-        with db.cursor(row_factory=dict_row) as cs:
-            res = cs.execute(
-                """
-                SELECT user_id, username, user_email, password_hash, user_role
-                FROM users
-                WHERE user_email = %s
-                """
-                , (email,),
-            ).fetchone()
+    await session.refresh(user)
 
-    if res is None:
+    return UserRecord(id=str(user.user_id), username=user.username,
+        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
+
+async def find_user_by_email(session: AsyncSession, email: str,) -> UserRecord | None:
+
+    result = await session.execute(
+        select(User).where(User.user_email == email)
+    )
+
+    user = result.scalar_one_or_none()
+
+    if user is None:
         return None
-    return UserRecord(id=str(res["user_id"]), username=res["username"], 
-                      email=res["user_email"], hashed_password=res["password_hash"], user_role=res["user_role"])
 
-def find_user_by_username(username: str) -> UserRecord | None:
-    with get_db_connection() as db:
-        with db.cursor(row_factory=dict_row) as cs:
-            res = cs.execute(
-                """
-                SELECT user_id, username, user_email, password_hash, user_role
-                FROM users
-                WHERE username = %s
-                """
-                , (username,),
-            ).fetchone()
+    return UserRecord(id=str(user.user_id), username=user.username,
+        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
 
-    if res is None:
+async def find_user_by_username(session: AsyncSession, username: str,) -> UserRecord | None:
+
+    result = await session.execute(
+        select(User).where(User.username == username)
+    )
+
+    user = result.scalar_one_or_none()
+
+    if user is None:
         return None
-    return UserRecord(id=str(res["user_id"]), username=res["username"], 
-                      email=res["user_email"], hashed_password=res["password_hash"], user_role=res["user_role"])
 
+    return UserRecord(id=str(user.user_id), username=user.username,
+        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
 
-def find_user_role_by_id(user_id: UUID) -> UserRoleResponse | None:
-    with get_db_connection() as db:
-        with db.cursor(row_factory=dict_row) as cs:
-            res = cs.execute(
-                """
-                SELECT user_id, user_role
-                FROM users
-                WHERE user_id = %s
-                """,
-                (user_id,),
-            ).fetchone()
+async def find_user_role_by_id(session: AsyncSession, user_id: UUID,) -> UserRoleResponse | None:
 
-    if res is None:
+    result = await session.execute(
+        select(User.user_id, User.user_role).where(User.user_id == user_id)
+    )
+
+    user = result.one_or_none()
+
+    if user is None:
         return None
-    return UserRoleResponse(user_id=res["user_id"], role=res["user_role"])
 
+    return UserRoleResponse(user_id=user.user_id, role=user.user_role)
 
-def find_user_profile_by_id(user_id: UUID) -> CurrentUserResponse | None:
-    with get_db_connection() as db:
-        with db.cursor(row_factory=dict_row) as cs:
-            res = cs.execute(
-                """
-                SELECT username, user_email
-                FROM users
-                WHERE user_id = %s
-                """,
-                (user_id,),
-            ).fetchone()
+async def find_user_profile_by_id(session: AsyncSession, user_id: UUID,) -> CurrentUserResponse | None:
 
-    if res is None:
+    result = await session.execute(
+        select(User.username, User.user_email).where(User.user_id == user_id)
+    )
+
+    user = result.scalar_one_or_none()
+
+    if user is None:
         return None
-    return CurrentUserResponse(username=res["username"], email=res["user_email"])
 
+    return CurrentUserResponse(username=user.username, email=user.user_email)
 
-def update_user_profile(
-    user_id: UUID,
-    username: str | None,
-    email: str | None,
-) -> CurrentUserResponse | None:
+async def update_user_profile(session: AsyncSession, user_id: UUID, 
+                              username: str | None, email: str | None,) -> CurrentUserResponse | None:
+
+    result = await session.execute(
+        select(User).where(User.user_id == user_id)
+    )
+
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        return None
+
+    if username is not None:
+        user.username = username
+    if email is not None:
+        user.user_email = email
+
+    user.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
     try:
-        with get_db_connection() as db:
-            with db.cursor(row_factory=dict_row) as cs:
-                res = cs.execute(
-                    """
-                    UPDATE users
-                    SET username = COALESCE(%s, username),
-                        user_email = COALESCE(%s, user_email),
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s
-                    RETURNING username, user_email
-                    """,
-                    (username, email, user_id),
-                ).fetchone()
-    except UniqueViolation:
-        raise UserAlreadyExistsError("Username or email already exists") from None
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
 
-    if res is None:
-        return None
-    return CurrentUserResponse(username=res["username"], email=res["user_email"])
+        constraint = getattr(exc.orig.diag, "constraint_name", None,)
+
+        if constraint == "users_username_key" or constraint == "users_email_key":
+            raise UserAlreadyExistsError("Username or Email already exists.") from None
+        
+        raise
+
+    await session.refresh(user)
+
+    return CurrentUserResponse(username=user.username, email=user.user_email)
