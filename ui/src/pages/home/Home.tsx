@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useToast } from '../../components/toast/useToast'
 import { routes } from '../../routes'
@@ -26,22 +26,37 @@ const Home = () => {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <span className={styles.wordmark}>campus<em>errands.</em></span>
-        <button type="button" onClick={handleSignOut} disabled={isSigningOut}>
-          {isSigningOut ? 'Signing out…' : 'Sign out'}
-        </button>
+        <Link className={styles.wordmark} to={routes.home}>campus<em>errands.</em></Link>
+        <nav aria-label="Main navigation">
+          <Link to={routes.home} aria-current="page">Home</Link>
+          <Link to={routes.suppliers}>Suppliers</Link>
+          <button type="button" onClick={handleSignOut} disabled={isSigningOut}>
+            {isSigningOut ? 'Signing out…' : 'Sign out'}
+          </button>
+        </nav>
       </header>
       <main className={styles.main}>
-        <p className={styles.eyebrow}>NUS student community</p>
-        <h1>What can we help<br />you carry today?</h1>
-        <p className={styles.intro}>
-          Ask for a small favour, help someone already on your route, and make the spaces between classes count.
-        </p>
+        <div className={styles.hero}>
+          <div>
+            <p className={styles.eyebrow}>NUS student community</p>
+            <h1>Small errands.<br /><em>Shared routes.</em></h1>
+            <p className={styles.intro}>
+              Start with a campus pickup point, then ask for a small favour from someone already heading your way.
+            </p>
+            <Link className={styles.primaryAction} to={routes.suppliers}>Browse campus suppliers <span aria-hidden="true">↗</span></Link>
+          </div>
+          <aside>
+            <span className={styles.eyebrow}>Start here</span>
+            <strong>01</strong>
+            <p>Choose a supplier and see its location and opening hours.</p>
+          </aside>
+        </div>
         <section className={styles.cards} aria-label="Campus Errands overview">
           <article>
             <span>01</span>
-            <h2>Request an errand</h2>
-            <p>Share what you need, where it is, and when it should arrive.</p>
+            <h2>Find a supplier</h2>
+            <p>Browse live supplier data by name, category, or campus building.</p>
+            <Link to={routes.suppliers}>View suppliers</Link>
           </article>
           <article>
             <span>02</span>

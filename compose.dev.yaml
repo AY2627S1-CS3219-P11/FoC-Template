@@ -1,0 +1,19 @@
+services:
+  user-db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: foc
+      POSTGRES_PASSWORD: foc
+      POSTGRES_DB: foc
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - user-postgres-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foc -d foc"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  user-postgres-data:

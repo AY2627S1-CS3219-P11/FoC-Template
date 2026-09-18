@@ -8,6 +8,12 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     server: {
       proxy: {
+        '/supplier-api': {
+          target: env.VITE_SUPPLIER_API_PROXY_TARGET || 'http://127.0.0.1:3001',
+          changeOrigin: true,
+          cookieDomainRewrite: '',
+          rewrite: (path) => path.replace(/^\/supplier-api(?=\/|$)/, ''),
+        },
         '/api': {
           target: env.VITE_API_PROXY_TARGET || 'http://127.0.0.1:5005',
           changeOrigin: true,
@@ -18,6 +24,7 @@ export default defineConfig(({ mode }) => {
     },
     define: {
       'import.meta.env.VITE_API_URL': JSON.stringify(env.VITE_API_URL || '/api'),
+      'import.meta.env.VITE_SUPPLIER_API_URL': JSON.stringify(env.VITE_SUPPLIER_API_URL || '/supplier-api'),
     },
   }
 })

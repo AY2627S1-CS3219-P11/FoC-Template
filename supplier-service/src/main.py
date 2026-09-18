@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, HTTPException, status
+import httpx
+from fastapi import Cookie, Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import (
@@ -202,8 +203,64 @@ async def get_suppliers(
         raise HTTPException(status_code=500, detail=str(error)) from error
 
 
-async def get_user():
-    return {"isAdmin": True}
+class AuthenticatedUser(BaseModel):
+    user_id: UUID
+    role: str
+
+
+async def get_user_service_client() -> AsyncIterator[httpx.AsyncClient]:
+    base_url = os.environ.get("USER_SERVICE_URL", "http://127.0.0.1:5005")
+    async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
+        yield client
+
+
+async def get_user(
+    client: Annotated[httpx.AsyncClient, Depends(get_user_service_client)],
+    access_token: Annotated[str | None, Cookie()] = None,
+) -> AuthenticatedUser:
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No authentication token found. Please sign in.",
+        )
+
+    try:
+        response = await client.get(
+            "/authentication/sessions/current",
+            headers={"Cookie": f"access_token={access_token}"},
+        )
+    except httpx.RequestError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is temporarily unavailable.",
+        ) from error
+
+    if response.status_code == status.HTTP_401_UNAUTHORIZED:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token. Please sign in.",
+        )
+    if not response.is_success:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication is temporarily unavailable.",
+        )
+
+    try:
+        return AuthenticatedUser.model_validate(response.json())
+    except (ValueError, ValidationError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Authentication returned an invalid response.",
+        ) from error
+
+
+def require_admin(user: AuthenticatedUser) -> None:
+    if user.role not in {"admin", "admin_manager"}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
 
 
 class SupplierCreate(BaseModel):
@@ -224,15 +281,11 @@ class SupplierCreate(BaseModel):
 
 @app.post("/suppliers", status_code=status.HTTP_201_CREATED)
 async def create_supplier(
-    user: Annotated[dict, Depends(get_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_user)],
     create: SupplierCreate,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SupplierResponse:
-    if not user.get("isAdmin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+    require_admin(user)
 
     try:
         supplier = create.to_supplier()
@@ -264,15 +317,11 @@ class SupplierUpdate(BaseModel):
 @app.patch("/suppliers/{id}")
 async def update_supplier(
     id: UUID,
-    user: Annotated[dict, Depends(get_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_user)],
     update: SupplierUpdate,
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> SupplierResponse:
-    if not user.get("isAdmin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+    require_admin(user)
 
     try:
         supplier = await session.scalar(select(Supplier).where(Supplier.id == id))
@@ -301,14 +350,10 @@ async def update_supplier(
 @app.delete("/suppliers/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_supplier(
     id: UUID,
-    user: Annotated[dict, Depends(get_user)],
+    user: Annotated[AuthenticatedUser, Depends(get_user)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> None:
-    if not user.get("isAdmin"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
+    require_admin(user)
 
     try:
         supplier = await session.scalar(select(Supplier).where(Supplier.id == id))

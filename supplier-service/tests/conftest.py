@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -20,6 +22,10 @@ async def client(monkeypatch):
         poolclass=StaticPool,
     )
     monkeypatch.setattr(main, "get_engine", lambda: engine)
+    main.app.dependency_overrides[main.get_user] = lambda: main.AuthenticatedUser(
+        user_id=UUID("00000000-0000-0000-0000-000000000001"),
+        role="admin",
+    )
 
     async with engine.begin() as connection:
         await connection.run_sync(main.Base.metadata.create_all)

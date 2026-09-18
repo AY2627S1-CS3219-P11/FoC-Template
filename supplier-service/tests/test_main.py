@@ -1,3 +1,6 @@
+from uuid import UUID
+
+import httpx
 import pytest
 from fastapi import status
 
@@ -95,9 +98,112 @@ async def test_delete_supplier_hides_it_from_list(client):
 
 @pytest.mark.anyio
 async def test_non_admin_cannot_create_supplier(client):
-    main.app.dependency_overrides[main.get_user] = lambda: {"isAdmin": False}
+    main.app.dependency_overrides[main.get_user] = lambda: main.AuthenticatedUser(
+        user_id=UUID("00000000-0000-0000-0000-000000000002"),
+        role="user",
+    )
 
     response = await client.post("/suppliers", json=SUPPLIER)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert response.json()["detail"] == "Admin access required"
+
+
+@pytest.mark.anyio
+async def test_admin_manager_can_create_supplier(client):
+    main.app.dependency_overrides[main.get_user] = lambda: main.AuthenticatedUser(
+        user_id=UUID("00000000-0000-0000-0000-000000000003"),
+        role="admin_manager",
+    )
+
+    response = await client.post("/suppliers", json=SUPPLIER)
+
+    assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.anyio
+async def test_authentication_forwards_access_token_cookie(client):
+    main.app.dependency_overrides.pop(main.get_user)
+
+    def authenticate(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/authentication/sessions/current"
+        assert request.headers["cookie"] == "access_token=test-token"
+        return httpx.Response(
+            status.HTTP_200_OK,
+            json={
+                "user_id": "00000000-0000-0000-0000-000000000004",
+                "role": "admin",
+            },
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(authenticate),
+        base_url="http://user-service",
+    ) as user_service_client:
+        async def override_user_service_client():
+            yield user_service_client
+
+        main.app.dependency_overrides[main.get_user_service_client] = (
+            override_user_service_client
+        )
+        client.cookies.set("access_token", "test-token")
+        response = await client.post("/suppliers", json=SUPPLIER)
+
+    assert response.status_code == status.HTTP_201_CREATED
+
+
+@pytest.mark.anyio
+async def test_missing_access_token_is_unauthorized(client):
+    main.app.dependency_overrides.pop(main.get_user)
+
+    response = await client.post("/suppliers", json=SUPPLIER)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json()["detail"] == "No authentication token found. Please sign in."
+
+
+@pytest.mark.anyio
+async def test_rejected_access_token_is_unauthorized(client):
+    main.app.dependency_overrides.pop(main.get_user)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(status.HTTP_401_UNAUTHORIZED)
+        ),
+        base_url="http://user-service",
+    ) as user_service_client:
+        async def override_user_service_client():
+            yield user_service_client
+
+        main.app.dependency_overrides[main.get_user_service_client] = (
+            override_user_service_client
+        )
+        client.cookies.set("access_token", "expired-token")
+        response = await client.post("/suppliers", json=SUPPLIER)
+
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json()["detail"] == "Invalid or expired token. Please sign in."
+
+
+@pytest.mark.anyio
+async def test_unavailable_user_service_returns_503(client):
+    main.app.dependency_overrides.pop(main.get_user)
+
+    def unavailable(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection failed", request=request)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(unavailable),
+        base_url="http://user-service",
+    ) as user_service_client:
+        async def override_user_service_client():
+            yield user_service_client
+
+        main.app.dependency_overrides[main.get_user_service_client] = (
+            override_user_service_client
+        )
+        client.cookies.set("access_token", "test-token")
+        response = await client.post("/suppliers", json=SUPPLIER)
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json()["detail"] == "Authentication is temporarily unavailable."

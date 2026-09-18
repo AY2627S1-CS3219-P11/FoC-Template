@@ -17,3 +17,7 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local prototype and generated root package metadata
+/UI Prototype CS3219 (Copy)/
+/package-lock.json
