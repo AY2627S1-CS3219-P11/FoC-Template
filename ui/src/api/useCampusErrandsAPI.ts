@@ -15,6 +15,8 @@ import type {
   SupplierCreateRequest,
   SupplierUpdateRequest,
 } from '../pages/suppliers/models'
+import type { CurrentUserProfile } from '../components/user/models'
+import type { UpdateCurrentUserProfileRequest } from '../pages/profile/models'
 
 export const useCampusErrandsAPI = () => useMemo(() => ({
   request: makeCampusErrandsAPIRequest,
@@ -36,6 +38,14 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
       signOut: () =>
         makeCampusErrandsAPIRequest<null, SignOutResponse>(
           null, endpointConfig.user.authentication.signOut,
+        ),
+      getCurrentUser: (options?: AuthenticatedRequestOptions) =>
+        makeAuthenticatedCampusErrandsAPIRequest<null, CurrentUserProfile>(
+          null, endpointConfig.user.authentication.getCurrentUser, options,
+        ),
+      updateCurrentUser: (request: UpdateCurrentUserProfileRequest) =>
+        makeAuthenticatedCampusErrandsAPIRequest<UpdateCurrentUserProfileRequest, CurrentUserProfile>(
+          request, endpointConfig.user.authentication.updateCurrentUser,
         ),
     },
   },

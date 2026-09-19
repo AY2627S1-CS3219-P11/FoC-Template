@@ -12,22 +12,27 @@ from auth.exceptions import (
     AuthenticationUnavailableError,
     InvalidCredentialsError,
     UserAlreadyExistsError,
+    UserNotFoundError,
 )
 from auth.models import (
     AccessTokenClaims,
     CurrentUserResponse,
+    ManagedUserResponse,
     SignInRequest,
     SignUpRequest,
     UpdateCurrentUserRequest,
+    UpdateUserRoleRequest,
     UserRecord,
     UserRoleResponse,
 )
 from auth.repository import (
     create_user,
+    find_managed_users,
     find_user_by_email,
     find_user_profile_by_id,
     find_user_by_username,
     find_user_role_by_id,
+    update_managed_user_role,
     update_user_profile,
 )
 
@@ -111,6 +116,24 @@ async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> Curr
     if profile is None:
         raise jwt.InvalidTokenError("The authenticated user no longer exists.")
     return profile
+
+
+async def get_users_for_access_management(
+    query: str | None,
+    session: AsyncSession,
+) -> list[ManagedUserResponse]:
+    return await find_managed_users(session, query)
+
+
+async def update_user_role(
+    user_id: UUID,
+    request: UpdateUserRoleRequest,
+    session: AsyncSession,
+) -> ManagedUserResponse:
+    user = await update_managed_user_role(session, user_id, request.role)
+    if user is None:
+        raise UserNotFoundError("User not found.")
+    return user
 
 
 async def update_current_user_profile(

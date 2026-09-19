@@ -7,3 +7,7 @@ class InvalidCredentialsError(ValueError):
 
 class UserAlreadyExistsError(ValueError):
     pass
+
+
+class UserNotFoundError(ValueError):
+    pass

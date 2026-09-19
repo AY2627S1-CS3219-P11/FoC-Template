@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
 import { CampusErrandsAPIError } from '../../api/models'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useToast } from '../../components/toast/useToast'
-import { routes } from '../../routes'
 import type { CurrentSession, Supplier, SupplierCategory, SupplierCreateRequest } from './models'
 import styles from './Suppliers.module.css'
 
@@ -53,7 +51,6 @@ const formatTime = (value: string) => value.slice(0, 5)
 
 const Suppliers = () => {
   const api = useCampusErrandsAPI()
-  const navigate = useNavigate()
   const { showErrorToast, showSuccessToast } = useToast()
   const [session, setSession] = useState<CurrentSession | null>(null)
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -166,26 +163,8 @@ const Suppliers = () => {
     }
   }
 
-  const handleSignOut = async () => {
-    try {
-      await api.user.authentication.signOut()
-      navigate(routes.signIn, { replace: true })
-    } catch {
-      showErrorToast('Unable to sign out. Please try again.')
-    }
-  }
-
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <Link className={styles.wordmark} to={routes.home}>campus<em>errands.</em></Link>
-        <nav aria-label="Main navigation">
-          <Link to={routes.home}>Home</Link>
-          <Link to={routes.suppliers} aria-current="page">Suppliers</Link>
-          <button type="button" onClick={() => void handleSignOut()}>Sign out</button>
-        </nav>
-      </header>
-
       <main className={styles.main}>
         <div className={styles.heading}>
           <div>
