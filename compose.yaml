@@ -1,2 +1,3 @@
 include:
+  - path: ./user-service/compose.yaml
   - path: ./supplier-service/compose.yaml
