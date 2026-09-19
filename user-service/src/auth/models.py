@@ -72,6 +72,17 @@ class CurrentUserResponse(BaseModel):
     email: EmailStr
 
 
+class ManagedUserResponse(BaseModel):
+    user_id: UUID
+    username: str
+    email: EmailStr
+    role: Literal[UserRole.USER, UserRole.ADMIN]
+
+
+class UpdateUserRoleRequest(BaseModel):
+    role: Literal[UserRole.USER, UserRole.ADMIN]
+
+
 class UpdateCurrentUserRequest(BaseModel):
     username: str | None = Field(default=None, min_length=1, max_length=50)
     email: EmailStr | None = None
