@@ -16,9 +16,7 @@ const ProtectedRoutes = () => {
   useEffect(() => {
     const verify = async () => {
       try {
-        await api.user.authentication.verify({
-          onUnauthenticated: () => {},
-        })
+        await api.user.authentication.verify({ onUnauthenticated: () => {} })
         setStatus('authenticated')
       } catch (error) {
         setStatus(error instanceof CampusErrandsAPIError && error.status === 401 ? 'unauthenticated' : 'error')
@@ -31,12 +29,14 @@ const ProtectedRoutes = () => {
   if (status === 'loading') return <p className={styles.status} role="status">Checking your session…</p>
   if (status === 'error') {
     return (
-      <div role="alert">
-        <p>Unable to verify your session.</p>
-        <button type="button" onClick={() => {
-          setStatus('loading')
-          setAttempt((value) => value + 1)
-        }}>Try again</button>
+      <div className={styles.status} role="alert">
+        <div className={styles.error}>
+          <p>Unable to verify your session.</p>
+          <button type="button" onClick={() => {
+            setStatus('loading')
+            setAttempt((value) => value + 1)
+          }}>Try again</button>
+        </div>
       </div>
     )
   }

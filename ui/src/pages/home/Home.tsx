@@ -1,40 +1,10 @@
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
-import { useToast } from '../../components/toast/useToast'
+import { Link } from 'react-router-dom'
 import { routes } from '../../routes'
 import styles from './Home.module.css'
 
 const Home = () => {
-  const [isSigningOut, setIsSigningOut] = useState(false)
-  const api = useCampusErrandsAPI()
-  const navigate = useNavigate()
-  const { showErrorToast } = useToast()
-
-  const handleSignOut = async () => {
-    setIsSigningOut(true)
-
-    try {
-      await api.user.authentication.signOut()
-      navigate(routes.signIn, { replace: true })
-    } catch {
-      showErrorToast('Unable to sign out. Please try again.')
-      setIsSigningOut(false)
-    }
-  }
-
   return (
     <div className={styles.page}>
-      <header className={styles.header}>
-        <Link className={styles.wordmark} to={routes.home}>campus<em>errands.</em></Link>
-        <nav aria-label="Main navigation">
-          <Link to={routes.home} aria-current="page">Home</Link>
-          <Link to={routes.suppliers}>Suppliers</Link>
-          <button type="button" onClick={handleSignOut} disabled={isSigningOut}>
-            {isSigningOut ? 'Signing out…' : 'Sign out'}
-          </button>
-        </nav>
-      </header>
       <main className={styles.main}>
         <div className={styles.hero}>
           <div>

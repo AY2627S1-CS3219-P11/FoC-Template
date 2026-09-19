@@ -145,7 +145,7 @@ async def find_user_profile_by_id(session: AsyncSession, user_id: UUID,) -> Curr
         select(User.username, User.user_email).where(User.user_id == user_id)
     )
 
-    user = result.scalar_one_or_none()
+    user = result.one_or_none()
 
     if user is None:
         return None

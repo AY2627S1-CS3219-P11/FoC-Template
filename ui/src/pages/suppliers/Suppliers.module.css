@@ -1,11 +1,5 @@
-.page { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; background: #f7f8f2; }
-.header, .main, .footer { width: min(1120px, calc(100% - 48px)); margin-inline: auto; }
-.header { padding: 24px 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 32px; border-bottom: 1px solid #ccd5c5; }
-.wordmark { display: flex; flex-direction: column; color: #283a31; font-family: 'Iowan Old Style', Georgia, serif; font-size: 26px; font-weight: 600; line-height: .88; letter-spacing: -.055em; text-decoration: none; }
-.wordmark em { margin-left: 22px; font-weight: 400; }
-.header nav { display: flex; align-items: center; gap: 24px; }
-.header nav a, .header nav button { padding: 10px 0; color: #526257; background: transparent; border: 0; font-size: .86rem; text-decoration: none; cursor: pointer; }
-.header nav a[aria-current='page'] { color: #283a31; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 7px; }
+.page { flex: 1; display: flex; flex-direction: column; background: #f7f8f2; }
+.main, .footer { width: min(1120px, calc(100% - 48px)); margin-inline: auto; }
 .main { flex: 1; padding: 64px 0 84px; }
 .heading { display: flex; align-items: end; justify-content: space-between; gap: 32px; }
 .eyebrow { margin: 0; color: #626e63; font-size: .68rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
@@ -49,9 +43,7 @@ button:disabled { cursor: not-allowed; opacity: .58; }
 }
 
 @media (max-width: 620px) {
-  .header, .main, .footer { width: min(100% - 32px, 1120px); }
-  .header { align-items: flex-start; }
-  .header nav { gap: 13px; flex-wrap: wrap; justify-content: flex-end; }
+  .main, .footer { width: min(100% - 32px, 1120px); }
   .main { padding: 46px 0 60px; }
   .heading { align-items: flex-start; flex-direction: column; }
   .filters { margin-top: 38px; grid-template-columns: 1fr; }
