@@ -72,15 +72,18 @@ class CurrentUserResponse(BaseModel):
     email: EmailStr
 
 
+ManagedUserRole = Literal[UserRole.USER, UserRole.ADMIN]
+
+
 class ManagedUserResponse(BaseModel):
     user_id: UUID
     username: str
     email: EmailStr
-    role: Literal[UserRole.USER, UserRole.ADMIN]
+    role: ManagedUserRole
 
 
 class UpdateUserRoleRequest(BaseModel):
-    role: Literal[UserRole.USER, UserRole.ADMIN]
+    role: ManagedUserRole
 
 
 class UpdateCurrentUserRequest(BaseModel):

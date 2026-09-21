@@ -11,7 +11,7 @@ const AppHeader = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { showErrorToast } = useToast()
-  const { activeRole, profile, setActiveRole } = useUser()
+  const { activeRole, profile, session, setActiveRole } = useUser()
   const [isOpen, setIsOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -105,6 +105,12 @@ const AppHeader = () => {
               <span>Profile</span>
               <span aria-hidden="true">→</span>
             </Link>
+            {session.role === 'admin_manager' && (
+              <Link to={routes.adminManagerPortal} onClick={() => setIsOpen(false)}>
+                <span>Admin manager portal</span>
+                <span aria-hidden="true">→</span>
+              </Link>
+            )}
           </nav>
 
           <button className={styles.signOutButton} type="button" onClick={() => void handleSignOut()} disabled={isSigningOut}>

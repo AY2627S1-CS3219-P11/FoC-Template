@@ -17,6 +17,7 @@ from auth.exceptions import (
 from auth.models import (
     AccessTokenClaims,
     CurrentUserResponse,
+    ManagedUserRole,
     ManagedUserResponse,
     SignInRequest,
     SignUpRequest,
@@ -119,10 +120,11 @@ async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> Curr
 
 
 async def get_users_for_access_management(
+    role: ManagedUserRole,
     query: str | None,
     session: AsyncSession,
 ) -> list[ManagedUserResponse]:
-    return await find_managed_users(session, query)
+    return await find_managed_users(session, role, query)
 
 
 async def update_user_role(

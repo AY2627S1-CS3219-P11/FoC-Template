@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { CampusErrandsAPIError } from '../../api/models'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useToast } from '../../components/toast/useToast'
-import type { CurrentSession, Supplier, SupplierCategory, SupplierCreateRequest } from './models'
+import { useUser } from '../../components/user/UserContext'
+import type { Supplier, SupplierCategory, SupplierCreateRequest } from './models'
 import styles from './Suppliers.module.css'
 
 const POLL_INTERVAL_MS = 10_000
@@ -52,7 +53,7 @@ const formatTime = (value: string) => value.slice(0, 5)
 const Suppliers = () => {
   const api = useCampusErrandsAPI()
   const { showErrorToast, showSuccessToast } = useToast()
-  const [session, setSession] = useState<CurrentSession | null>(null)
+  const { session } = useUser()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<'all' | SupplierCategory>('all')
@@ -65,11 +66,7 @@ const Suppliers = () => {
 
   const loadSuppliers = useCallback(async () => {
     try {
-      const [currentSession, currentSuppliers] = await Promise.all([
-        api.user.authentication.verify(),
-        api.supplier.list(),
-      ])
-      setSession(currentSession)
+      const currentSuppliers = await api.supplier.list()
       setSuppliers(currentSuppliers)
       setError(null)
     } catch (requestError) {

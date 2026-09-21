@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { CampusErrandsAPIError } from '../../api/models'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { routes } from '../../routes'
+import type { CurrentSession } from '../user/models'
 import styles from './ProtectedRoutes.module.css'
 
 type AuthenticationStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error'
@@ -10,13 +11,15 @@ type AuthenticationStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'e
 const ProtectedRoutes = () => {
   const location = useLocation()
   const [status, setStatus] = useState<AuthenticationStatus>('loading')
+  const [session, setSession] = useState<CurrentSession | null>(null)
   const [attempt, setAttempt] = useState(0)
   const api = useCampusErrandsAPI()
 
   useEffect(() => {
     const verify = async () => {
       try {
-        await api.user.authentication.verify({ onUnauthenticated: () => {} })
+        const currentSession = await api.user.authentication.verify({ onUnauthenticated: () => {} })
+        setSession(currentSession)
         setStatus('authenticated')
       } catch (error) {
         setStatus(error instanceof CampusErrandsAPIError && error.status === 401 ? 'unauthenticated' : 'error')
@@ -44,7 +47,7 @@ const ProtectedRoutes = () => {
     const returnTo = `${location.pathname}${location.search}${location.hash}`
     return <Navigate to={routes.signIn} state={{ returnTo }} replace />
   }
-  return <Outlet />
+  return session ? <Outlet context={session} /> : null
 }
 
 export default ProtectedRoutes

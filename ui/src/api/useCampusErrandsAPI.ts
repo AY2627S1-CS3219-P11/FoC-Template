@@ -10,12 +10,16 @@ import type {
   SignUpResponse,
 } from '../pages/authentication/models'
 import type {
-  CurrentSession,
   Supplier,
   SupplierCreateRequest,
   SupplierUpdateRequest,
 } from '../pages/suppliers/models'
-import type { CurrentUserProfile } from '../components/user/models'
+import type { CurrentSession, CurrentUserProfile } from '../components/user/models'
+import type {
+  ListManagedUsersRequest,
+  ManagedUser,
+  UpdateManagedUserRoleRequest,
+} from '../pages/adminManagerPortal/models'
 import type { UpdateCurrentUserProfileRequest } from '../pages/profile/models'
 
 export const useCampusErrandsAPI = () => useMemo(() => ({
@@ -46,6 +50,14 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
       updateCurrentUser: (request: UpdateCurrentUserProfileRequest) =>
         makeAuthenticatedCampusErrandsAPIRequest<UpdateCurrentUserProfileRequest, CurrentUserProfile>(
           request, endpointConfig.user.authentication.updateCurrentUser,
+        ),
+      listManagedUsers: (request: ListManagedUsersRequest) =>
+        makeAuthenticatedCampusErrandsAPIRequest<ListManagedUsersRequest, ManagedUser[]>(
+          request, endpointConfig.user.authentication.listManagedUsers,
+        ),
+      updateManagedUserRole: (request: UpdateManagedUserRoleRequest) =>
+        makeAuthenticatedCampusErrandsAPIRequest<UpdateManagedUserRoleRequest, ManagedUser>(
+          request, endpointConfig.user.authentication.updateManagedUserRole,
         ),
     },
   },
