@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useOutletContext } from 'react-router-dom'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import AppHeader from '../appHeader/AppHeader'
-import type { CurrentUserProfile } from '../user/models'
+import type { CurrentSession, CurrentUserProfile } from '../user/models'
 import { UserProvider } from '../user/UserProvider'
 import styles from './ProtectedLayout.module.css'
 
 type ProfileStatus = 'loading' | 'ready' | 'error'
 
 const ProtectedLayout = () => {
+  const session = useOutletContext<CurrentSession>()
   const api = useCampusErrandsAPI()
   const [profile, setProfile] = useState<CurrentUserProfile | null>(null)
   const [status, setStatus] = useState<ProfileStatus>('loading')
@@ -47,7 +48,7 @@ const ProtectedLayout = () => {
   }
 
   return (
-    <UserProvider initialProfile={profile}>
+    <UserProvider initialProfile={profile} session={session}>
       <div className={styles.layout}>
         <AppHeader />
         <Outlet />

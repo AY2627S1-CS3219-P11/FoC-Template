@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider, type RouteObject } from 'react-router-dom'
 import ProtectedLayout from './components/protectedLayout/ProtectedLayout'
 import ProtectedRoutes from './components/protectedRoutes/ProtectedRoutes'
+import AdminManagerPortal from './pages/adminManagerPortal/AdminManagerPortal'
 import SignIn from './pages/authentication/signIn/SignIn'
 import SignUp from './pages/authentication/signUp/SignUp'
 import Home from './pages/home/Home'
@@ -19,6 +20,7 @@ const appRoutes: RouteObject[] = [
         children: [
           { path: routes.home, element: <Home /> },
           { path: routes.profile, element: <Profile /> },
+          { path: routes.adminManagerPortal, element: <AdminManagerPortal /> },
           { path: routes.suppliers, element: <Suppliers /> },
         ],
       },
