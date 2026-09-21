@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth.orm_models import User
 from auth.models import (
     CurrentUserResponse,
+    ManagedUserRole,
     ManagedUserResponse,
     UserRecord,
     UserRole,
@@ -84,18 +85,17 @@ async def find_user_role_by_id(session: AsyncSession, user_id: UUID,) -> UserRol
 
 async def find_managed_users(
     session: AsyncSession,
+    role: ManagedUserRole,
     query: str | None,
 ) -> list[ManagedUserResponse]:
-    statement = select(User).where(User.user_role != UserRole.ADMIN_MANAGER)
+    statement = select(User).where(User.user_role == role)
 
-    if query is None:
-        statement = statement.where(User.user_role == UserRole.ADMIN)
-    else:
+    if query is not None:
         identifier = query.strip()
         statement = statement.where(
             or_(
-                User.username == identifier,
-                User.user_email == identifier.lower(),
+                User.username.icontains(identifier, autoescape=True),
+                User.user_email.icontains(identifier, autoescape=True),
             )
         )
 

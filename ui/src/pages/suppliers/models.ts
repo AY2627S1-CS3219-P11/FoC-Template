@@ -1,10 +1,3 @@
-export type UserRole = 'user' | 'admin' | 'admin_manager'
-
-export type CurrentSession = {
-  user_id: string
-  role: UserRole
-}
-
 export type SupplierCategory = 'Food' | 'Shopping' | 'Printing' | 'Food/Coffee'
 
 export type Supplier = {

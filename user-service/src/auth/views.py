@@ -23,11 +23,13 @@ from auth.service import (
 from auth.models import (
     AuthenticationResponse,
     CurrentUserResponse,
+    ManagedUserRole,
     ManagedUserResponse,
     SignInRequest,
     SignUpRequest,
     UpdateCurrentUserRequest,
     UpdateUserRoleRequest,
+    UserRole,
     UserRoleResponse,
 )
 from auth.responses import clear_access_token_cookie, unauthorized_response
@@ -84,19 +86,20 @@ async def get_current_user(user: AuthenticatedUser, session: Annotated[AsyncSess
 async def get_users(
     _admin_manager: AdminManagerUser,
     session: Annotated[AsyncSession, Depends(get_session)],
+    role: Annotated[
+        ManagedUserRole,
+        Query(description="Account role to list or search."),
+    ] = UserRole.ADMIN,
     query: Annotated[
         str | None,
         Query(
             min_length=1,
             max_length=254,
-            description=(
-                "Optional exact username or email to find a matching user or admin account. "
-                "Admin manager accounts are not searchable."
-            ),
+            description="Optional case-insensitive username or email search within the selected role.",
         ),
     ] = None,
 ):
-    return await get_users_for_access_management(query, session)
+    return await get_users_for_access_management(role, query, session)
 
 
 @router.patch("/users/{user_id}/role", response_model=ManagedUserResponse)
