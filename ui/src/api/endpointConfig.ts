@@ -9,6 +9,18 @@ export const endpointConfig = {
       signOut: { service: 'user', url: '/authentication/sessions/current', verb: 'DELETE' },
       getCurrentUser: { service: 'user', url: '/authentication/users/current', verb: 'GET' },
       updateCurrentUser: { service: 'user', url: '/authentication/users/current', verb: 'PATCH' },
+      listManagedUsers: {
+        service: 'user',
+        url: '/authentication/users',
+        verb: 'GET',
+        fieldMap: { role: 'query', query: 'query' },
+      },
+      updateManagedUserRole: {
+        service: 'user',
+        url: '/authentication/users/:userId/role',
+        verb: 'PATCH',
+        fieldMap: { userId: 'path' },
+      },
     },
   },
   supplier: {
