@@ -49,7 +49,9 @@ class Supplier(Base):
     closingTime: Mapped[datetime.time]
     imageUrl: Mapped[str | None]
     is_active: Mapped[bool] = mapped_column(default=True)
-
+    created_by: Mapped[UUID | None] = mapped_column(default=None)
+    updated_by: Mapped[UUID | None] = mapped_column(default=None)
+    deleted_by: Mapped[UUID | None] = mapped_column(default=None)
 
 @lru_cache
 def get_engine() -> AsyncEngine:
@@ -289,6 +291,7 @@ async def create_supplier(
 
     try:
         supplier = create.to_supplier()
+        supplier.created_by = user.user_id
         session.add(supplier)
         await session.commit()
         await session.refresh(supplier)
@@ -333,6 +336,7 @@ async def update_supplier(
 
         for key, value in update.model_dump(exclude_unset=True).items():
             setattr(supplier, key, value)
+        supplier.updated_by = user.user_id
 
         await session.commit()
         await session.refresh(supplier)
@@ -364,6 +368,7 @@ async def delete_supplier(
             )
 
         supplier.is_active = False
+        supplier.deleted_by = user.user_id
         await session.commit()
     except HTTPException:
         raise
