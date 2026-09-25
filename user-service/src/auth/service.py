@@ -29,10 +29,11 @@ from auth.models import (
 from auth.repository import (
     create_user,
     find_managed_users,
+    find_user_authentication_state,
     find_user_by_email,
     find_user_profile_by_id,
     find_user_by_username,
-    find_user_role_by_id,
+    increment_user_token_version,
     update_managed_user_role,
     update_user_profile,
 )
@@ -69,6 +70,7 @@ def create_access_token(user: UserRecord) -> str:
             "sub": str(user.id),
             "email": str(user.email),
             "tokenType": "access",
+            "tokenVersion": user.token_version,
             "iat": now,
             "exp": now + timedelta(seconds=settings.access_token_duration_seconds),
         },
@@ -82,7 +84,9 @@ def verify_access_token(token: str) -> AccessTokenClaims:
         token,
         get_access_token_secret(),
         algorithms=["HS256"],
-        options={"require": ["sub", "email", "tokenType", "iat", "exp"]},
+        options={
+            "require": ["sub", "email", "tokenType", "tokenVersion", "iat", "exp"]
+        },
     )
     try:
         return AccessTokenClaims.model_validate(payload)
@@ -105,11 +109,20 @@ async def authenticate_user(credentials: SignInRequest, session: AsyncSession) -
     return create_access_token(user)
 
 
-async def get_current_user_role(user_id: UUID, session: AsyncSession) -> UserRoleResponse:
-    role = await find_user_role_by_id(session, user_id)
-    if role is None:
+async def get_current_user_role(
+    user_id: UUID,
+    token_version: int,
+    session: AsyncSession,
+) -> UserRoleResponse:
+    authentication_state = await find_user_authentication_state(session, user_id)
+    if authentication_state is None:
         raise jwt.InvalidTokenError("The authenticated user no longer exists.")
-    return role
+    if authentication_state.token_version != token_version:
+        raise jwt.InvalidTokenError("The access token has been invalidated.")
+    return UserRoleResponse(
+        user_id=authentication_state.user_id,
+        role=authentication_state.role,
+    )
 
 
 async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> CurrentUserResponse:
@@ -117,6 +130,18 @@ async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> Curr
     if profile is None:
         raise jwt.InvalidTokenError("The authenticated user no longer exists.")
     return profile
+
+
+async def invalidate_user_tokens(token: str | None, session: AsyncSession) -> None:
+    if not token:
+        return
+
+    try:
+        claims = verify_access_token(token)
+    except jwt.InvalidTokenError:
+        return
+
+    await increment_user_token_version(session, claims.sub, claims.tokenVersion)
 
 
 async def get_users_for_access_management(

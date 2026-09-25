@@ -60,6 +60,13 @@ class UserRecord(BaseModel):
     email: EmailStr
     hashed_password: str = Field(repr=False)
     user_role: UserRole
+    token_version: int = Field(ge=0)
+
+
+class UserAuthenticationState(BaseModel):
+    user_id: UUID
+    role: UserRole
+    token_version: int = Field(ge=0)
 
 
 class UserRoleResponse(BaseModel):
@@ -111,5 +118,6 @@ class AccessTokenClaims(BaseModel):
     sub: UUID
     email: EmailStr
     tokenType: Literal["access"]
+    tokenVersion: int = Field(strict=True, ge=0)
     iat: int = Field(strict=True)
     exp: int = Field(strict=True)

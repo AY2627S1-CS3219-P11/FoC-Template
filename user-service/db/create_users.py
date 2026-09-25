@@ -13,6 +13,7 @@ def create_users_table():
                         password_hash TEXT NOT NULL,
                         user_role TEXT NOT NULL DEFAULT 'user'
                             CHECK (user_role IN ('user', 'admin', 'admin_manager')),
+                        token_version INTEGER NOT NULL DEFAULT 0,
                         created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP 
                     );

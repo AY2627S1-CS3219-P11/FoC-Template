@@ -36,7 +36,7 @@ async def get_authenticated_user(
 
     try:
         claims = verify_access_token(token)
-        return await get_current_user_role(claims.sub, session)
+        return await get_current_user_role(claims.sub, claims.tokenVersion, session)
     except InvalidTokenError:
         raise HTTPException(
             status_code=401,
