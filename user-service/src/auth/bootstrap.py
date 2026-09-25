@@ -10,7 +10,7 @@ from common.config_manager import settings
 
 async def provision_admin_manager(session: AsyncSession,) -> None:
     result = await session.execute(
-        select(User).where(User.user_email == settings.initial_admin_email)
+        select(User.user_id).where(User.user_role == "admin_manager").limit(1)
     )
 
     if result.scalar_one_or_none() is not None:
