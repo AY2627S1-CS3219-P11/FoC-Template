@@ -2,11 +2,11 @@ from uuid import UUID
 
 import datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.orm_models import User
+from auth.orm_models import AuthenticationSession, User
 from auth.models import (
     CurrentUserResponse,
     ManagedUserRole,
@@ -16,6 +16,49 @@ from auth.models import (
     UserRoleResponse,
 )
 from auth.exceptions import UserAlreadyExistsError
+
+
+async def create_authentication_session(
+    session: AsyncSession,
+    access_token_hash: str,
+    user_id: UUID,
+    expires_at: datetime.datetime,
+) -> None:
+    session.add(
+        AuthenticationSession(
+            access_token_hash=access_token_hash,
+            user_id=user_id,
+            expires_at=expires_at,
+        )
+    )
+    await session.commit()
+
+
+async def authentication_session_exists(
+    session: AsyncSession,
+    access_token_hash: str,
+    user_id: UUID,
+) -> bool:
+    stored_hash = await session.scalar(
+        select(AuthenticationSession.access_token_hash).where(
+            AuthenticationSession.access_token_hash == access_token_hash,
+            AuthenticationSession.user_id == user_id,
+            AuthenticationSession.expires_at > func.current_timestamp(),
+        )
+    )
+    return stored_hash is not None
+
+
+async def delete_authentication_session(
+    session: AsyncSession,
+    access_token_hash: str,
+) -> None:
+    await session.execute(
+        delete(AuthenticationSession).where(
+            AuthenticationSession.access_token_hash == access_token_hash
+        )
+    )
+    await session.commit()
 
 async def create_user(session: AsyncSession,
                       username: str,email: str, hashed_password: str,) -> UserRecord:
