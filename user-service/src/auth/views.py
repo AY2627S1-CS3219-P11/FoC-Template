@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Security
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from jwt import InvalidTokenError
 from typing import Annotated
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from common.db import get_session
 from common.config_manager import settings
-from auth.dependencies import AdminManagerUser, AuthenticatedUser, bearer_scheme
+from auth.dependencies import AdminManagerUser, AuthenticatedUser
 from auth.exceptions import (
     AuthenticationUnavailableError,
     InvalidCredentialsError,
@@ -17,7 +16,6 @@ from auth.service import (
     authenticate_user,
     get_current_user_profile,
     get_users_for_access_management,
-    invalidate_user_tokens,
     register_user,
     update_current_user_profile,
     update_user_role,
@@ -129,24 +127,7 @@ async def update_current_user(update: UpdateCurrentUserRequest, user: Authentica
 
 
 @router.delete("/sessions/current", status_code=204)
-async def sign_out(
-    request: Request,
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None,
-        Security(bearer_scheme),
-    ],
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> Response:
-    token = (
-        credentials.credentials
-        if credentials is not None
-        else request.cookies.get("access_token")
-    )
-    try:
-        await invalidate_user_tokens(token, session)
-    except AuthenticationUnavailableError:
-        raise HTTPException(status_code=503, detail="Authentication is temporarily unavailable.") from None
-
+def sign_out() -> Response:
     response = Response(status_code=204)
     clear_access_token_cookie(response)
     return response

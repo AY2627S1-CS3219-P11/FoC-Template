@@ -2,7 +2,7 @@ from uuid import UUID
 
 import datetime
 
-from sqlalchemy import or_, select, update
+from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,9 +11,9 @@ from auth.models import (
     CurrentUserResponse,
     ManagedUserRole,
     ManagedUserResponse,
-    UserAuthenticationState,
     UserRecord,
     UserRole,
+    UserRoleResponse,
 )
 from auth.exceptions import UserAlreadyExistsError
 
@@ -39,8 +39,7 @@ async def create_user(session: AsyncSession,
     await session.refresh(user)
 
     return UserRecord(id=str(user.user_id), username=user.username,
-        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,
-        token_version=user.token_version,)
+        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
 
 async def find_user_by_email(session: AsyncSession, email: str,) -> UserRecord | None:
 
@@ -54,8 +53,7 @@ async def find_user_by_email(session: AsyncSession, email: str,) -> UserRecord |
         return None
 
     return UserRecord(id=str(user.user_id), username=user.username,
-        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,
-        token_version=user.token_version,)
+        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
 
 async def find_user_by_username(session: AsyncSession, username: str,) -> UserRecord | None:
 
@@ -69,16 +67,12 @@ async def find_user_by_username(session: AsyncSession, username: str,) -> UserRe
         return None
 
     return UserRecord(id=str(user.user_id), username=user.username,
-        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,
-        token_version=user.token_version,)
+        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
 
-async def find_user_authentication_state(
-    session: AsyncSession,
-    user_id: UUID,
-) -> UserAuthenticationState | None:
+async def find_user_role_by_id(session: AsyncSession, user_id: UUID,) -> UserRoleResponse | None:
 
     result = await session.execute(
-        select(User.user_id, User.user_role, User.token_version).where(User.user_id == user_id)
+        select(User.user_id, User.user_role).where(User.user_id == user_id)
     )
 
     user = result.one_or_none()
@@ -86,27 +80,7 @@ async def find_user_authentication_state(
     if user is None:
         return None
 
-    return UserAuthenticationState(
-        user_id=user.user_id,
-        role=user.user_role,
-        token_version=user.token_version,
-    )
-
-
-async def increment_user_token_version(
-    session: AsyncSession,
-    user_id: UUID,
-    token_version: int,
-) -> None:
-    await session.execute(
-        update(User)
-        .where(User.user_id == user_id, User.token_version == token_version)
-        .values(
-            token_version=User.token_version + 1,
-            updated_at=datetime.datetime.now(datetime.timezone.utc),
-        )
-    )
-    await session.commit()
+    return UserRoleResponse(user_id=user.user_id, role=user.user_role)
 
 
 async def find_managed_users(

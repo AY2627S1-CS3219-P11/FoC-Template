@@ -1,7 +1,7 @@
 import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, Integer, String, Text
+from sqlalchemy import CheckConstraint, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 
@@ -22,8 +22,6 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False,)
 
     user_role: Mapped[str] = mapped_column(Text, nullable=False, default="user")
-
-    token_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
         default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False)
