@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
 import secrets
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import bcrypt
 import jwt
@@ -27,7 +28,10 @@ from auth.models import (
     UserRoleResponse,
 )
 from auth.repository import (
+    authentication_session_exists,
+    create_authentication_session,
     create_user,
+    delete_authentication_session,
     find_managed_users,
     find_user_by_email,
     find_user_profile_by_id,
@@ -36,6 +40,10 @@ from auth.repository import (
     update_managed_user_role,
     update_user_profile,
 )
+
+
+def hash_access_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def hash_password(password: str) -> str:
@@ -71,6 +79,7 @@ def create_access_token(user: UserRecord) -> str:
             "tokenType": "access",
             "iat": now,
             "exp": now + timedelta(seconds=settings.access_token_duration_seconds),
+            "jti": str(uuid4()),
         },
         get_access_token_secret(),
         algorithm="HS256",
@@ -102,7 +111,16 @@ async def authenticate_user(credentials: SignInRequest, session: AsyncSession) -
 
     if user is None or not matches:
         raise InvalidCredentialsError()
-    return create_access_token(user)
+
+    token = create_access_token(user)
+    claims = verify_access_token(token)
+    await create_authentication_session(
+        session,
+        hash_access_token(token),
+        user.id,
+        datetime.fromtimestamp(claims.exp, timezone.utc),
+    )
+    return token
 
 
 async def get_current_user_role(user_id: UUID, session: AsyncSession) -> UserRoleResponse:
@@ -110,6 +128,27 @@ async def get_current_user_role(user_id: UUID, session: AsyncSession) -> UserRol
     if role is None:
         raise jwt.InvalidTokenError("The authenticated user no longer exists.")
     return role
+
+
+async def get_authenticated_user_role(
+    token: str,
+    user_id: UUID,
+    session: AsyncSession,
+) -> UserRoleResponse:
+    if not await authentication_session_exists(
+        session,
+        hash_access_token(token),
+        user_id,
+    ):
+        raise jwt.InvalidTokenError("The authentication session is invalid or expired.")
+    return await get_current_user_role(user_id, session)
+
+
+async def invalidate_authentication_session(
+    token: str,
+    session: AsyncSession,
+) -> None:
+    await delete_authentication_session(session, hash_access_token(token))
 
 
 async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> CurrentUserResponse:

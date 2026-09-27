@@ -1,7 +1,7 @@
 import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, String, Text
+from sqlalchemy import CheckConstraint, ForeignKey, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 
@@ -39,3 +39,22 @@ class User(Base):
             name="valid_user_role",
         ),
     )
+
+
+class AuthenticationSession(Base):
+    __tablename__ = "authentication_sessions"
+
+    access_token_hash: Mapped[str] = mapped_column(Text, primary_key=True)
+
+    user_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("users.user_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+        nullable=False,
+    )
+
+    expires_at: Mapped[datetime.datetime] = mapped_column(nullable=False)

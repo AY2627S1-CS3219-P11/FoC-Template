@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from common.db import get_session
 from auth.exceptions import AuthenticationUnavailableError
 from auth.models import UserRole, UserRoleResponse
-from auth.service import get_current_user_role, verify_access_token
+from auth.service import get_authenticated_user_role, verify_access_token
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -36,7 +36,7 @@ async def get_authenticated_user(
 
     try:
         claims = verify_access_token(token)
-        return await get_current_user_role(claims.sub, session)
+        return await get_authenticated_user_role(token, claims.sub, session)
     except InvalidTokenError:
         raise HTTPException(
             status_code=401,

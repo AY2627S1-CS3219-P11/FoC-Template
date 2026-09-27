@@ -113,3 +113,4 @@ class AccessTokenClaims(BaseModel):
     tokenType: Literal["access"]
     iat: int = Field(strict=True)
     exp: int = Field(strict=True)
+    jti: UUID
