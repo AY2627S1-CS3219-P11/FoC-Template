@@ -10,7 +10,7 @@ services:
       USER_API_UPSTREAM: http://user-service:5005
       SUPPLIER_API_UPSTREAM: http://supplier-service:3001
     ports:
-      - "8080:80"
+      - "4173:80"
     depends_on:
       user-service:
         condition: service_healthy
