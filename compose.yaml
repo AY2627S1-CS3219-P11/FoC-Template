@@ -1,3 +1,23 @@
 include:
   - path: ./user-service/compose.yaml
   - path: ./supplier-service/compose.yaml
+
+services:
+  ui:
+    build:
+      context: ./ui
+    environment:
+      USER_API_UPSTREAM: http://user-service:5005
+      SUPPLIER_API_UPSTREAM: http://supplier-service:3001
+    ports:
+      - "8080:80"
+    depends_on:
+      user-service:
+        condition: service_healthy
+      supplier-service:
+        condition: service_started
+
+  # Override the standalone supplier service's host-based integration target.
+  supplier-service:
+    environment:
+      USER_SERVICE_URL: http://user-service:5005
