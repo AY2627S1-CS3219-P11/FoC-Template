@@ -122,12 +122,23 @@ async def test_admin_manager_can_create_supplier(client):
 
 
 @pytest.mark.anyio
-async def test_authentication_forwards_access_token_cookie(client):
+@pytest.mark.parametrize(
+    ("bearer_token", "cookie_token", "expected_token"),
+    [
+        (None, "cookie-token", "cookie-token"),
+        ("bearer-token", None, "bearer-token"),
+        ("bearer-token", "cookie-token", "bearer-token"),
+    ],
+)
+async def test_authentication_forwards_token_as_bearer(
+    client, bearer_token, cookie_token, expected_token
+):
     main.app.dependency_overrides.pop(main.get_user)
 
     def authenticate(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/authentication/sessions/current"
-        assert request.headers["cookie"] == "access_token=test-token"
+        assert request.headers["authorization"] == f"Bearer {expected_token}"
+        assert "cookie" not in request.headers
         return httpx.Response(
             status.HTTP_200_OK,
             json={
@@ -146,8 +157,14 @@ async def test_authentication_forwards_access_token_cookie(client):
         main.app.dependency_overrides[main.get_user_service_client] = (
             override_user_service_client
         )
-        client.cookies.set("access_token", "test-token")
-        response = await client.post("/suppliers", json=SUPPLIER)
+        if cookie_token is not None:
+            client.cookies.set("access_token", cookie_token)
+        headers = (
+            {"Authorization": f"Bearer {bearer_token}"}
+            if bearer_token is not None
+            else {}
+        )
+        response = await client.post("/suppliers", json=SUPPLIER, headers=headers)
 
     assert response.status_code == status.HTTP_201_CREATED
 

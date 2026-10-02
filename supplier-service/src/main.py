@@ -11,7 +11,8 @@ from typing import Annotated
 from uuid import UUID, uuid4
 
 import httpx
-from fastapi import Cookie, Depends, FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import (
@@ -216,11 +217,22 @@ async def get_user_service_client() -> AsyncIterator[httpx.AsyncClient]:
         yield client
 
 
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
 async def get_user(
+    request: Request,
     client: Annotated[httpx.AsyncClient, Depends(get_user_service_client)],
-    access_token: Annotated[str | None, Cookie()] = None,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Security(bearer_scheme)
+    ],
 ) -> AuthenticatedUser:
-    if not access_token:
+    token = (
+        credentials.credentials
+        if credentials is not None
+        else request.cookies.get("access_token")
+    )
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No authentication token found. Please sign in.",
@@ -229,7 +241,7 @@ async def get_user(
     try:
         response = await client.get(
             "/authentication/sessions/current",
-            headers={"Cookie": f"access_token={access_token}"},
+            headers={"Authorization": f"Bearer {token}"},
         )
     except httpx.RequestError as error:
         raise HTTPException(

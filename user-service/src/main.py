@@ -51,6 +51,8 @@ async def invalid_request_handler(request: Request, exception: RequestValidation
 
 app.include_router(authentication_router)
 
+# TODO(team): why do we have CORSMiddleware to 5173? 
+# with ui container running on compose; we likely dont need this anymore
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
