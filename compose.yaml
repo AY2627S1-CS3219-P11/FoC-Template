@@ -18,6 +18,6 @@ services:
         condition: service_started
 
   # Override the standalone supplier service's host-based integration target.
-  supplier-service:
-    environment:
-      USER_SERVICE_URL: http://user-service:5005
+  # supplier-service:
+  #   environment:
+  #     USER_SERVICE_URL: http://user-service:5005
