@@ -17,6 +17,21 @@ services:
       supplier-service:
         condition: service_started
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: foc-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # Override the standalone supplier service's host-based integration target.
   # supplier-service:
   #   environment:
