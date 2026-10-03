@@ -1,6 +1,9 @@
+import asyncio
 import csv
 import datetime
 import os
+import aio_pika
+import json
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -159,7 +162,33 @@ async def lifespan(app: FastAPI):
     )
     engine = get_engine()
     await seed_database_from_csv(engine, csv_path)
+
+    rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://admin:admin123@rabbitmq:5672")
+    rmq_connection = None
+
+    for attempt in range(10):
+        try:
+            rmq_connection = await aio_pika.connect_robust(rabbitmq_url)
+            print("Successfully connected to RabbitMQ")
+            break
+        except (ConnectionRefusedError, OSError):
+            await asyncio.sleep(2)
+
+    if not rmq_connection:
+        raise RuntimeError("Could not connect to RabbitMQ")
+
+    rmq_channel = await rmq_connection.channel()
+
+    # declare fanout exchange
+    await rmq_channel.declare_exchange("supplier_events", aio_pika.ExchangeType.FANOUT)
+
+    app.state.rmq_connection = rmq_connection
+    app.state.rmq_channel = rmq_channel
+    print("Successfully connected to RabbitMQ")
+
     yield
+    await rmq_channel.close()
+    await rmq_connection.close()
     await engine.dispose()
 
 
@@ -169,6 +198,21 @@ app = FastAPI(title="Supplier Service", lifespan=lifespan)
 @app.get("/health")
 async def health_check():
     return {"status": "healthy", "service": "supplier-service"}
+
+async def publish_supplier_event(channel: aio_pika.Channel, event_type: str, supplier_id: UUID) -> None:
+    try:
+        exchange = await channel.declare_exchange("supplier_events", aio_pika.ExchangeType.FANOUT)
+        payload = json.dumps({
+            "event": event_type,
+            "supplier_id": str(supplier_id)
+        })
+        message = aio_pika.Message(
+            body=payload.encode(),
+            delivery_mode=aio_pika.DeliveryMode.PERSISTENT
+        )
+        await exchange.publish(message, routing_key="")
+    except Exception as error:
+        print(f"Failed to publish RabbitMQ event '{event_type}': {error}")
 
 
 class SupplierResponse(BaseModel):
@@ -307,6 +351,7 @@ async def create_supplier(
         session.add(supplier)
         await session.commit()
         await session.refresh(supplier)
+        await publish_supplier_event(app.state.rmq_channel, "supplier.created", supplier.id)
         return SupplierResponse.parse(supplier)
     except Exception as error:
         await session.rollback()
@@ -352,6 +397,7 @@ async def update_supplier(
 
         await session.commit()
         await session.refresh(supplier)
+        await publish_supplier_event(app.state.rmq_channel, "supplier.updated", supplier.id)
         return SupplierResponse.parse(supplier)
     except HTTPException:
         raise
@@ -382,6 +428,7 @@ async def delete_supplier(
         supplier.is_active = False
         supplier.deleted_by = user.user_id
         await session.commit()
+        await publish_supplier_event(app.state.rmq_channel, "supplier.deleted", supplier.id)
     except HTTPException:
         raise
     except Exception as error:

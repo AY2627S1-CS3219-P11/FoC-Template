@@ -9,6 +9,7 @@ dependencies = [
     "sqlalchemy>=2.0.53",
     "uvicorn>=0.30",
     "fastapi[standard]>=0.141.1",
+    "aio-pika"
 ]
 
 [dependency-groups]
