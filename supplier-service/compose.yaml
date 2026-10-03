@@ -5,29 +5,9 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-supplier}:${POSTGRES_PASSWORD:-supplier}@supplier-db:5432/${POSTGRES_DB:-supplier}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER in supplier-service/.env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in supplier-service/.env}@ep-odd-mode-az7quoka-pooler.c-3.ap-southeast-1.aws.neon.tech/${POSTGRES_DB:?Set POSTGRES_DB in supplier-service/.env}?sslmode=require&channel_binding=require
       USER_SERVICE_URL: ${USER_SERVICE_URL:-http://host.docker.internal:5005}
     ports:
       - "3001:3001"
-    depends_on:
-      supplier-db:
-        condition: service_healthy
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-  supplier-db:
-    image: postgres:17-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-supplier}
-      POSTGRES_USER: ${POSTGRES_USER:-supplier}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-supplier}
-    volumes:
-      - supplier-postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-volumes:
-  supplier-postgres-data:
