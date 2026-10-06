@@ -1,0 +1,18 @@
+services:
+  internal-gateway:
+    build:
+      context: .
+    environment:
+      USER_SERVICE_UPSTREAM: ${USER_SERVICE_UPSTREAM:-http://user-service:5005}
+      SUPPLIER_SERVICE_UPSTREAM: ${SUPPLIER_SERVICE_UPSTREAM:-http://supplier-service:3001}
+      NGINX_DNS_RESOLVER: ${NGINX_DNS_RESOLVER:-127.0.0.11}
+    # Available to containers on the Compose network and to local development only.
+    ports:
+      - "${INTERNAL_GATEWAY_BIND_ADDRESS:-127.0.0.1}:${INTERNAL_GATEWAY_PORT:-8080}:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5

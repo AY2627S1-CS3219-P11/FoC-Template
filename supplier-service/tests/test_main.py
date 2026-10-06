@@ -136,7 +136,8 @@ async def test_authentication_forwards_token_as_bearer(
     main.app.dependency_overrides.pop(main.get_user)
 
     def authenticate(request: httpx.Request) -> httpx.Response:
-        assert request.url.path == "/authentication/sessions/current"
+        assert request.url.host == "internal-gateway"
+        assert request.url.path == "/user-api/authentication/sessions/current"
         assert request.headers["authorization"] == f"Bearer {expected_token}"
         assert "cookie" not in request.headers
         return httpx.Response(
@@ -149,13 +150,13 @@ async def test_authentication_forwards_token_as_bearer(
 
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(authenticate),
-        base_url="http://user-service",
-    ) as user_service_client:
-        async def override_user_service_client():
-            yield user_service_client
+        base_url="http://internal-gateway",
+    ) as gateway_client:
+        async def override_gateway_client():
+            yield gateway_client
 
-        main.app.dependency_overrides[main.get_user_service_client] = (
-            override_user_service_client
+        main.app.dependency_overrides[main.get_internal_gateway_client] = (
+            override_gateway_client
         )
         if cookie_token is not None:
             client.cookies.set("access_token", cookie_token)
@@ -187,13 +188,13 @@ async def test_rejected_access_token_is_unauthorized(client):
         transport=httpx.MockTransport(
             lambda _request: httpx.Response(status.HTTP_401_UNAUTHORIZED)
         ),
-        base_url="http://user-service",
-    ) as user_service_client:
-        async def override_user_service_client():
-            yield user_service_client
+        base_url="http://internal-gateway",
+    ) as gateway_client:
+        async def override_gateway_client():
+            yield gateway_client
 
-        main.app.dependency_overrides[main.get_user_service_client] = (
-            override_user_service_client
+        main.app.dependency_overrides[main.get_internal_gateway_client] = (
+            override_gateway_client
         )
         client.cookies.set("access_token", "expired-token")
         response = await client.post("/suppliers", json=SUPPLIER)
@@ -203,7 +204,7 @@ async def test_rejected_access_token_is_unauthorized(client):
 
 
 @pytest.mark.anyio
-async def test_unavailable_user_service_returns_503(client):
+async def test_unavailable_gateway_returns_503(client):
     main.app.dependency_overrides.pop(main.get_user)
 
     def unavailable(request: httpx.Request) -> httpx.Response:
@@ -211,16 +212,106 @@ async def test_unavailable_user_service_returns_503(client):
 
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(unavailable),
-        base_url="http://user-service",
-    ) as user_service_client:
-        async def override_user_service_client():
-            yield user_service_client
+        base_url="http://internal-gateway",
+    ) as gateway_client:
+        async def override_gateway_client():
+            yield gateway_client
 
-        main.app.dependency_overrides[main.get_user_service_client] = (
-            override_user_service_client
+        main.app.dependency_overrides[main.get_internal_gateway_client] = (
+            override_gateway_client
         )
         client.cookies.set("access_token", "test-token")
         response = await client.post("/suppliers", json=SUPPLIER)
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json()["detail"] == "Authentication is temporarily unavailable."
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("configured_url", "expected_url"),
+    [
+        ("http://internal-gateway", "http://internal-gateway"),
+        ("http://custom-gateway:8081/", "http://custom-gateway:8081"),
+    ],
+)
+async def test_internal_gateway_client_uses_shared_origin(
+    monkeypatch, configured_url, expected_url
+):
+    # Legacy peer-specific configuration must not affect HTTP routing.
+    monkeypatch.setenv("USER_SERVICE_URL", "http://old-user-service:5005")
+    monkeypatch.setenv("INTERNAL_GATEWAY_URL", configured_url)
+
+    async for gateway_client in main.get_internal_gateway_client():
+        assert str(gateway_client.base_url) == expected_url
+        assert gateway_client.timeout.connect == 5.0
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("gateway_url", [None, "", "   "])
+async def test_missing_gateway_configuration_fails_at_startup(monkeypatch, gateway_url):
+    monkeypatch.delenv("INTERNAL_GATEWAY_URL", raising=False)
+    if gateway_url is not None:
+        monkeypatch.setenv("INTERNAL_GATEWAY_URL", gateway_url)
+    monkeypatch.setattr(main, "get_engine", lambda: pytest.fail("Database accessed"))
+
+    with pytest.raises(RuntimeError, match="INTERNAL_GATEWAY_URL must be set"):
+        async with main.lifespan(main.app):
+            pytest.fail("Service started without a gateway URL")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "gateway_url",
+    [
+        "not-a-url",
+        "ftp://gateway",
+        "http://gateway/user-api",
+        "http://user:password@gateway",
+        "http://gateway?query=value",
+        "http://gateway#fragment",
+    ],
+)
+async def test_invalid_gateway_configuration_fails_at_startup(monkeypatch, gateway_url):
+    monkeypatch.setenv("INTERNAL_GATEWAY_URL", gateway_url)
+    monkeypatch.setattr(main, "get_engine", lambda: pytest.fail("Database accessed"))
+
+    with pytest.raises(RuntimeError, match="INTERNAL_GATEWAY_URL must be an HTTP"):
+        async with main.lifespan(main.app):
+            pytest.fail("Service started with an invalid gateway URL")
+
+
+@pytest.mark.anyio
+async def test_missing_broker_configuration_fails_at_startup(monkeypatch):
+    monkeypatch.setenv("INTERNAL_GATEWAY_URL", "http://internal-gateway")
+    monkeypatch.delenv("RABBITMQ_URL", raising=False)
+    monkeypatch.setattr(main, "get_engine", lambda: pytest.fail("Database accessed"))
+
+    with pytest.raises(RuntimeError, match="RABBITMQ_URL must be set"):
+        async with main.lifespan(main.app):
+            pytest.fail("Service started without a broker URL")
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("upstream_status", [500, 502, 503, 504])
+async def test_gateway_upstream_error_returns_503(client, upstream_status):
+    main.app.dependency_overrides.pop(main.get_user)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(upstream_status)
+        ),
+        base_url="http://internal-gateway",
+    ) as gateway_client:
+        async def override_gateway_client():
+            yield gateway_client
+
+        main.app.dependency_overrides[main.get_internal_gateway_client] = (
+            override_gateway_client
+        )
+        response = await client.post(
+            "/suppliers", json=SUPPLIER, headers={"Authorization": "Bearer test-token"}
+        )
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     assert response.json()["detail"] == "Authentication is temporarily unavailable."

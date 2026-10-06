@@ -1,0 +1,42 @@
+# Isolated routing tests: no application databases, credentials, or RabbitMQ.
+services:
+  internal-gateway:
+    extends:
+      file: ../compose.yaml
+      service: internal-gateway
+    environment:
+      USER_SERVICE_UPSTREAM: http://user-service:5005
+      SUPPLIER_SERVICE_UPSTREAM: http://supplier-service:3001
+      NGINX_DNS_RESOLVER: 127.0.0.11
+    ports: !override
+      - "127.0.0.1::80"
+
+  ui:
+    image: nginx:stable-alpine
+    environment:
+      # A trailing slash in the shared origin must not drop the API path.
+      INTERNAL_GATEWAY_URL: http://internal-gateway/
+      NGINX_DNS_RESOLVER: 127.0.0.11
+    volumes:
+      - ../../ui/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ../../ui/check-env.sh:/docker-entrypoint.d/19-check-env.sh:ro
+    ports:
+      - "127.0.0.1::80"
+
+  user-service:
+    image: python:3.14-slim
+    environment:
+      SERVICE: user-service
+      PORT: "5005"
+    volumes:
+      - ./upstream.py:/upstream.py:ro
+    command: ["python", "/upstream.py"]
+
+  supplier-service:
+    image: python:3.14-slim
+    environment:
+      SERVICE: supplier-service
+      PORT: "3001"
+    volumes:
+      - ./upstream.py:/upstream.py:ro
+    command: ["python", "/upstream.py"]
