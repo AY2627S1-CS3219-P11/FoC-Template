@@ -1,18 +1,29 @@
 # Supplier service
 
-The service exposes active supplier browsing plus administrator-only create, update, and soft-delete operations.
+The service exposes active supplier browsing plus administrator-only create,
+update, and soft-delete operations.
 
-Set `DATABASE_URL` for PostgreSQL and `USER_SERVICE_URL` for the user-service origin. For example, when both services run directly on the host:
+## Local Docker setup
 
-```sh
-export DATABASE_URL=postgresql+psycopg://supplier:supplier@localhost:5432/supplier
-export USER_SERVICE_URL=http://127.0.0.1:5005
-uv run fastapi dev src/main.py --port 3001
-```
+After configuring the backend `.env` files, run `docker compose up --build` from
+the repository root. Compose supplies `http://internal-gateway` and the broker
+address. The gateway is reachable on the shared Docker network, not through a
+published host port. See the [gateway guide](../internal-gateway/README.md).
 
-Protected operations forward the caller's `access_token` cookie to `GET /authentication/sessions/current`. The `admin` and `admin_manager` roles may create, edit, and deactivate suppliers.
+Application code has no address fallbacks: missing `INTERNAL_GATEWAY_URL`,
+`RABBITMQ_URL`, or `DATABASE_URL` prevents startup. The gateway URL must be an
+HTTP(S) origin; malformed values and URLs with credentials, paths, queries, or
+fragments are rejected. Supplier does not configure or call a user-service
+hostname directly. Other deployment topologies must supply reachable dependency
+addresses themselves.
 
-Run tests with:
+Protected operations forward the caller's bearer token (or `access_token`
+cookie) as an Authorization header to `GET /user-api/authentication/sessions/current`
+on the gateway. Nginx routes this to user-service's existing session validation
+endpoint. Authentication and role checks remain unchanged; `admin` and
+`admin_manager` may create, edit, and deactivate suppliers.
+
+## Tests
 
 ```sh
 uv run pytest

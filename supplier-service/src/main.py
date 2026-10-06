@@ -16,7 +16,7 @@ from uuid import UUID, uuid4
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, field_validator
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -57,12 +57,17 @@ class Supplier(Base):
     updated_by: Mapped[UUID | None] = mapped_column(default=None)
     deleted_by: Mapped[UUID | None] = mapped_column(default=None)
 
+def get_required_env(name: str) -> str:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        raise RuntimeError(f"{name} must be set")
+    return value
+
+
 @lru_cache
 def get_engine() -> AsyncEngine:
     """Create and reuse the service's asynchronous PostgreSQL connection pool."""
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL must be set")
+    database_url = get_required_env("DATABASE_URL")
 
     return create_async_engine(
         database_url,
@@ -154,6 +159,9 @@ async def seed_database_from_csv(engine: AsyncEngine, csv_path: Path) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Validate required destinations before connecting to external dependencies.
+    get_internal_gateway_url()
+    rabbitmq_url = get_required_env("RABBITMQ_URL")
     csv_path = (
         Path(__file__).resolve().parent.parent
         / "data"
@@ -163,7 +171,6 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     await seed_database_from_csv(engine, csv_path)
 
-    rabbitmq_url = os.environ.get("RABBITMQ_URL", "amqp://admin:admin123@rabbitmq:5672")
     rmq_connection = None
 
     for attempt in range(10):
@@ -255,8 +262,22 @@ class AuthenticatedUser(BaseModel):
     role: str
 
 
-async def get_user_service_client() -> AsyncIterator[httpx.AsyncClient]:
-    base_url = os.environ.get("USER_SERVICE_URL", "http://127.0.0.1:5005")
+def get_internal_gateway_url() -> str:
+    value = get_required_env("INTERNAL_GATEWAY_URL")
+    message = "INTERNAL_GATEWAY_URL must be an HTTP(S) origin without credentials, a path, query, or fragment"
+    try:
+        url = AnyHttpUrl(value)
+    except ValidationError as error:
+        raise RuntimeError(message) from error
+    if url.path not in {None, "", "/"} or any(
+        part is not None for part in (url.username, url.password, url.query, url.fragment)
+    ):
+        raise RuntimeError(message)
+    return str(url).rstrip("/")
+
+
+async def get_internal_gateway_client() -> AsyncIterator[httpx.AsyncClient]:
+    base_url = get_internal_gateway_url()
     async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
         yield client
 
@@ -266,7 +287,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 
 async def get_user(
     request: Request,
-    client: Annotated[httpx.AsyncClient, Depends(get_user_service_client)],
+    client: Annotated[httpx.AsyncClient, Depends(get_internal_gateway_client)],
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Security(bearer_scheme)
     ],
@@ -284,7 +305,7 @@ async def get_user(
 
     try:
         response = await client.get(
-            "/authentication/sessions/current",
+            "/user-api/authentication/sessions/current",
             headers={"Authorization": f"Bearer {token}"},
         )
     except httpx.RequestError as error:

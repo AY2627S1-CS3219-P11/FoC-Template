@@ -1,0 +1,14 @@
+services:
+  internal-gateway:
+    build:
+      context: .
+    environment:
+      USER_SERVICE_UPSTREAM: ${USER_SERVICE_UPSTREAM:-http://user-service:5005}
+      SUPPLIER_SERVICE_UPSTREAM: ${SUPPLIER_SERVICE_UPSTREAM:-http://supplier-service:3001}
+      NGINX_DNS_RESOLVER: ${NGINX_DNS_RESOLVER:-127.0.0.11}
+    # Internal only: callers use the shared Docker network, not a host port.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
