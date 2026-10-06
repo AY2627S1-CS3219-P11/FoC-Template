@@ -1,6 +1,7 @@
 # Campus Errands UI
 
-React and TypeScript frontend for Campus Errands.
+React and TypeScript frontend for Campus Errands. Use the [Docker setup](#docker)
+for the local application stack.
 
 ## Requirements
 
@@ -24,11 +25,7 @@ npm run dev
 
 Open <http://localhost:5173>.
 
-The development server forwards both API prefixes unchanged to the [internal gateway](../internal-gateway/README.md). Set `INTERNAL_GATEWAY_URL` in `.env.local` or the environment; the dev server refuses to start without it. Start the gateway alongside the backends first. For host-run development:
-
-```sh
-INTERNAL_GATEWAY_URL=http://127.0.0.1:8080 npm run dev
-```
+The development server forwards both API prefixes unchanged to the [internal gateway](../internal-gateway/README.md). Host-run development requires an explicitly configured, reachable `INTERNAL_GATEWAY_URL` in `.env.local` or the environment; the dev server refuses to start without it. The local Docker stack intentionally does not publish a gateway host endpoint, so it does not provide that host-run workflow.
 
 This server-side setting is not exposed to the browser. Static builds do not require a gateway address; the nginx runtime receives it from deployment configuration.
 
@@ -47,7 +44,9 @@ static assets through Nginx, including SPA route fallback. Root `compose.yaml`
 configures one `INTERNAL_GATEWAY_URL` (default `http://internal-gateway`);
 API requests stay on the browser's origin and retain their `/user-api` or
 `/supplier-api` prefix until the internal gateway routes them to a backend.
-This is a production-style build, not a hot-reloading dev server.
+The gateway is reachable only on the shared Docker network. No additional
+Compose files or gateway host-port settings are needed. This is a production-style
+build, not a hot-reloading dev server.
 
 ## Build
 

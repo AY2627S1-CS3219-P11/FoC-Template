@@ -8,8 +8,6 @@ services:
       USER_SERVICE_UPSTREAM: http://user-service:5005
       SUPPLIER_SERVICE_UPSTREAM: http://supplier-service:3001
       NGINX_DNS_RESOLVER: 127.0.0.11
-    ports: !override
-      - "127.0.0.1::80"
 
   ui:
     image: nginx:stable-alpine

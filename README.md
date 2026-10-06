@@ -56,10 +56,11 @@ gateway](internal-gateway/README.md) routes `/user-api/` to user-service and
 Services keep their existing authentication and authorization responsibilities.
 The UI also proxies API requests through this gateway.
 
-For host-run development, explicitly configure the gateway origin
-(`http://127.0.0.1:8080` with the default Compose mapping). Only gateway deployment
-settings contain backend HTTP addresses, including for separate EC2 instances.
-Bind addresses and DNS are configurable independently; RabbitMQ and databases
-remain separate from HTTP routing.
+Run `docker compose up --build` from the repository root and open the UI at
+<http://127.0.0.1:4173>. The gateway is not published on the host; containers
+reach it on the shared Docker network. Only gateway configuration contains
+backend HTTP addresses. RabbitMQ and databases remain separate from HTTP
+routing. Deployment to separate machines requires its own networking configuration
+and is outside this local Compose setup.
 
 ---
