@@ -23,12 +23,10 @@ class Credit(Base):
         BigInteger, nullable=False, server_default=text("0"),
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
+        DateTime(timezone=False), nullable=False,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False,
-        server_default=text("CURRENT_TIMESTAMP"),
+        DateTime(timezone=False), nullable=False,
     )
 
     __table_args__ = (
