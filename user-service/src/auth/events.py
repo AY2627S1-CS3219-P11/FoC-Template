@@ -30,18 +30,18 @@ async def publish_pending_user_events(
                 if pending is None:
                     return
 
-                confirmation = await exchange.publish(
-                    aio_pika.Message(
-                        body=pending.payload.encode("utf-8"),
-                        content_type="application/json",
-                        type="UserCreated",
-                        message_id=str(pending.user_id),
-                        delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-                    ),
-                    routing_key="user.created",
-                    mandatory=True,
-                    timeout=5,
-                )
+                async with asyncio.timeout(5):
+                    confirmation = await exchange.publish(
+                        aio_pika.Message(
+                            body=pending.payload.encode("utf-8"),
+                            content_type="application/json",
+                            type="UserCreated",
+                            message_id=str(pending.user_id),
+                            delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                        ),
+                        routing_key="user.created",
+                        mandatory=True,
+                    )
                 if not isinstance(confirmation, Basic.Ack):
                     raise RuntimeError("RabbitMQ did not confirm UserCreated delivery")
                 await session.delete(pending)

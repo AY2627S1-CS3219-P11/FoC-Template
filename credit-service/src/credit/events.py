@@ -1,6 +1,7 @@
 import asyncio
 
 from aio_pika.abc import AbstractIncomingMessage
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from credit.models import UserCreated
@@ -13,6 +14,12 @@ async def consume_user_created(
 ) -> None:
     try:
         event = UserCreated.model_validate_json(message.body)
+    except ValidationError:
+        print("Invalid UserCreated event; message rejected without requeue.")
+        await message.reject(requeue=False)
+        return
+
+    try:
         async with session_factory() as session:
             await create_credit_account(session, event)
         await message.ack()
