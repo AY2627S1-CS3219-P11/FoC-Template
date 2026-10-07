@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "Campus Errands User Service"
     database_url: SecretStr | None = None
+    rabbitmq_url: SecretStr | None = None
     initial_admin_username: str | None = None
     initial_admin_email: EmailStr | None = None
     initial_admin_password: SecretStr | None = None

@@ -19,4 +19,5 @@ services:
       retries: 10
       start_period: 10s
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy

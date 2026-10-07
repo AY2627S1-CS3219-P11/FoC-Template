@@ -3,6 +3,7 @@ name = "user-service"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+    "aio-pika>=9,<10",
     "bcrypt>=4,<6",
     "email-validator>=2,<3",
     "fastapi>=0.115,<1",
