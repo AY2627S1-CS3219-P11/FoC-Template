@@ -1,3 +1,4 @@
+import datetime
 from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
@@ -60,6 +61,12 @@ class UserRecord(BaseModel):
     email: EmailStr
     hashed_password: str = Field(repr=False)
     user_role: UserRole
+
+
+class UserCreated(BaseModel):
+    event: Literal["UserCreated"] = "UserCreated"
+    user_id: UUID
+    created_at: datetime.datetime
 
 
 class UserRoleResponse(BaseModel):

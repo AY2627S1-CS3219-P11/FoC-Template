@@ -6,12 +6,13 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.orm_models import AuthenticationSession, User
+from auth.orm_models import AuthenticationSession, User, UserCreatedOutbox
 from auth.models import (
     CurrentUserResponse,
     ManagedUserRole,
     ManagedUserResponse,
     UserRecord,
+    UserCreated,
     UserRole,
     UserRoleResponse,
 )
@@ -68,18 +69,22 @@ async def create_user(session: AsyncSession,
     session.add(user)
 
     try:
+        await session.flush()
+        await session.refresh(user)
+        event = UserCreated(user_id=user.user_id, created_at=user.created_at)
+        session.add(UserCreatedOutbox(
+            user_id=user.user_id, payload=event.model_dump_json(),
+        ))
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
 
-        constraint = getattr(exc.orig.diag, "constraint_name", None,)
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
 
-        if constraint == "users_username_key" or constraint == "users_email_key":
+        if constraint in {"users_username_key", "users_email_key", "users_user_email_key"}:
             raise UserAlreadyExistsError("Username or Email already exists.") from None
         
         raise
-
-    await session.refresh(user)
 
     return UserRecord(id=str(user.user_id), username=user.username,
         email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)

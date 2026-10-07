@@ -58,3 +58,12 @@ class AuthenticationSession(Base):
     )
 
     expires_at: Mapped[datetime.datetime] = mapped_column(nullable=False)
+
+
+class UserCreatedOutbox(Base):
+    __tablename__ = "user_created_outbox"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True,
+    )
+    payload: Mapped[str] = mapped_column(Text, nullable=False)

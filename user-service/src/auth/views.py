@@ -35,17 +35,22 @@ from auth.models import (
     UserRoleResponse,
 )
 from auth.responses import clear_access_token_cookie, unauthorized_response
+from auth.events import publish_pending_user_events
 
 
 router = APIRouter(prefix="/authentication", tags=["Authentication"])
 
 
 @router.post("/users", status_code=201)
-async def sign_up(credentials: SignUpRequest, session: Annotated[AsyncSession, Depends(get_session)],):
+async def sign_up(credentials: SignUpRequest, request: Request,
+                  session: Annotated[AsyncSession, Depends(get_session)],):
     try:
         user = await register_user(credentials, session)
     except UserAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
+    await publish_pending_user_events(
+        request.app.state.session_factory, request.app.state.user_exchange, user.id,
+    )
     return {"message": "Account created successfully. Please sign in to continue."}
 
 
