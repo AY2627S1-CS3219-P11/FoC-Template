@@ -3,10 +3,10 @@ from contextlib import AsyncExitStack, asynccontextmanager
 
 import aio_pika
 from fastapi import FastAPI
-from sqlalchemy import text
 
 from common.config_manager import settings
 from common.db import get_engine
+from credit.orm_models import Base
 from credit.views import router as credit_router
 
 
@@ -18,8 +18,8 @@ async def lifespan(app: FastAPI):
     engine = get_engine()
     async with AsyncExitStack() as resources:
         resources.push_async_callback(engine.dispose)
-        async with engine.connect() as connection:
-            await connection.execute(text("SELECT 1"))
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
 
         rmq_connection = None
         for attempt in range(10):
