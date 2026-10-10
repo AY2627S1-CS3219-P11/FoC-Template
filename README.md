@@ -26,7 +26,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 Local identity infrastructure lives in [`keycloak/`](keycloak/README.md), with
 its own PostgreSQL database and realm import. See that guide to start it without
-the application stack. Application authentication integration is a later stage.
+the application stack. See the service guides for backend authentication settings.
 
 This repository follows a **one-service-per-folder** structure: each
 microservice (`user-service/`, `supplier-service/`, `order-service/`,
