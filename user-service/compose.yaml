@@ -8,9 +8,15 @@ services:
       - .env
     environment:
       INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
-      AUTH_PROVIDER: ${AUTH_PROVIDER:-legacy}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-keycloak}
       KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/foc}
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-foc-api}
+      KEYCLOAK_SERVER_URL: ${KEYCLOAK_SERVER_URL:-http://keycloak:8080}
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-foc}
+      KEYCLOAK_BACKEND_CLIENT_ID: foc-backend
+      KEYCLOAK_BACKEND_CLIENT_SECRET: ${KEYCLOAK_BACKEND_CLIENT_SECRET:?Set KEYCLOAK_BACKEND_CLIENT_SECRET in the root .env}
+      KEYCLOAK_API_CLIENT_ID: foc-api
+      KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET:?Set KEYCLOAK_API_CLIENT_SECRET in the root .env}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/foc/protocol/openid-connect/certs}
     ports:
       - "5005:5005"
@@ -25,4 +31,5 @@ services:
       retries: 10
       start_period: 10s
     depends_on:
-      - rabbitmq
+      keycloak:
+        condition: service_healthy

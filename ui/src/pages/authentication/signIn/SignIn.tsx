@@ -5,6 +5,7 @@ import { useCampusErrandsAPI } from '../../../api/useCampusErrandsAPI'
 import AuthLayout from '../../../components/authLayout/AuthLayout'
 import { useToast } from '../../../components/toast/useToast'
 import { routes } from '../../../routes'
+import { login, usesKeycloak } from '../../../auth/keycloak'
 import styles from '../Authentication.module.css'
 
 type AuthenticationNavigationState = {
@@ -47,6 +48,17 @@ const SignIn = () => {
     } finally {
       setIsPending(false)
     }
+  }
+
+  if (usesKeycloak) {
+    return <AuthLayout eyebrow="NUS student community" title="Sign In">
+      <button className={styles.submit} disabled={isPending} onClick={async () => {
+        setIsPending(true)
+        try { await login(returnTo ?? routes.home) }
+        catch { showErrorToast('Unable to sign in. Please try again.'); setIsPending(false) }
+      }}>Sign in</button>
+      <p className={styles.footer}>New here? <Link to={routes.signUp}>Create an account</Link></p>
+    </AuthLayout>
   }
 
   return (

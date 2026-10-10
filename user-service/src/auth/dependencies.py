@@ -26,7 +26,11 @@ bearer_scheme = HTTPBearer(auto_error=False)
 @lru_cache
 def get_keycloak_validator() -> KeycloakTokenValidator:
     return KeycloakTokenValidator(
-        settings.keycloak_issuer, settings.keycloak_audience, settings.keycloak_jwks_url
+        settings.keycloak_issuer, settings.keycloak_audience, settings.keycloak_jwks_url,
+        introspection_url=f"{settings.keycloak_server_url.rstrip('/')}/realms/{settings.keycloak_realm}/protocol/openid-connect/token/introspect",
+        client_id=settings.keycloak_api_client_id,
+        client_secret=settings.keycloak_api_client_secret.get_secret_value()
+        if settings.keycloak_api_client_secret else None,
     )
 
 

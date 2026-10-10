@@ -1,9 +1,12 @@
 """Shared Keycloak token validation for independently deployed FoC services."""
 
 from dataclasses import dataclass
-from json import JSONDecodeError
+from json import JSONDecodeError, load
 from threading import Lock
 from urllib.parse import urlsplit
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+from urllib.error import URLError
 from uuid import UUID
 
 import jwt
@@ -12,7 +15,7 @@ from jwt.exceptions import PyJWKClientConnectionError, PyJWKClientError, PyJWKSe
 
 
 class AuthenticationUnavailableError(Exception):
-    """The configured signing keys cannot be retrieved."""
+    """Keycloak signing keys or session verification are unavailable."""
 
 
 class ApplicationRoleRequiredError(Exception):
@@ -23,6 +26,7 @@ class ApplicationRoleRequiredError(Exception):
 class Identity:
     user_id: UUID
     role: str
+    session_id: str | None = None
 
 
 def auth_provider(value: str) -> str:
@@ -46,7 +50,11 @@ def _http_url(value: str, setting: str) -> str:
 
 
 class KeycloakTokenValidator:
-    def __init__(self, issuer: str, audience: str, jwks_url: str | None = None):
+    def __init__(
+        self, issuer: str, audience: str, jwks_url: str | None = None, *,
+        introspection_url: str | None = None, client_id: str | None = None,
+        client_secret: str | None = None,
+    ):
         self.issuer = _http_url(issuer.rstrip("/"), "KEYCLOAK_ISSUER")
         if not audience.strip():
             raise ValueError("KEYCLOAK_AUDIENCE must be set")
@@ -58,6 +66,33 @@ class KeycloakTokenValidator:
         # Cache the key set rather than caching individual keys indefinitely.
         self._keys = PyJWKClient(self.jwks_url, cache_jwk_set=True, lifespan=300, timeout=5)
         self._lock = Lock()
+        self.introspection_url = None
+        if introspection_url is not None:
+            self.introspection_url = _http_url(introspection_url, "KEYCLOAK_INTROSPECTION_URL")
+            if not client_id or not client_secret:
+                raise ValueError("Keycloak session checks require backend client credentials")
+        self._client_id = client_id
+        self._client_secret = client_secret
+
+    def _check_session(self, token: str) -> None:
+        if self.introspection_url is None:
+            return
+        body = urlencode({
+            "token": token, "token_type_hint": "access_token",
+            "client_id": self._client_id, "client_secret": self._client_secret,
+        }).encode()
+        try:
+            request = Request(self.introspection_url, data=body, headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+            })
+            with urlopen(request, timeout=5) as response:
+                active = load(response)
+        except (URLError, TimeoutError, JSONDecodeError) as error:
+            raise AuthenticationUnavailableError("Keycloak session verification is unavailable") from error
+        if not isinstance(active, dict) or not isinstance(active.get("active"), bool):
+            raise AuthenticationUnavailableError("Invalid session verification response")
+        if not active["active"]:
+            raise jwt.InvalidTokenError("The Keycloak session is inactive")
 
     def validate(self, token: str) -> Identity:
         header = jwt.get_unverified_header(token)
@@ -83,11 +118,16 @@ class KeycloakTokenValidator:
         except (TypeError, ValueError, AttributeError) as error:
             raise jwt.InvalidTokenError("Expected a UUID subject") from error
 
+        self._check_session(token)
+        session_id = claims.get("sid")
+        if session_id is not None and not isinstance(session_id, str):
+            raise jwt.InvalidTokenError("Invalid session ID")
+
         realm_access = claims.get("realm_access", {})
         roles = realm_access.get("roles", []) if isinstance(realm_access, dict) else []
         if not isinstance(roles, list) or any(not isinstance(role, str) for role in roles):
             raise jwt.InvalidTokenError("Invalid realm roles")
         for role in ("admin_manager", "admin", "user"):
             if role in roles:
-                return Identity(user_id=user_id, role=role)
+                return Identity(user_id=user_id, role=role, session_id=session_id)
         raise ApplicationRoleRequiredError("A FoC application role is required")

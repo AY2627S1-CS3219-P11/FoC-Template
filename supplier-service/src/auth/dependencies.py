@@ -47,6 +47,9 @@ def get_keycloak_validator() -> KeycloakTokenValidator:
         os.environ.get("KEYCLOAK_ISSUER", ""),
         os.environ.get("KEYCLOAK_AUDIENCE", ""),
         os.environ.get("KEYCLOAK_JWKS_URL") or None,
+        introspection_url=f"{os.environ.get('KEYCLOAK_SERVER_URL', 'http://localhost:8080').rstrip('/')}/realms/{os.environ.get('KEYCLOAK_REALM', 'foc')}/protocol/openid-connect/token/introspect",
+        client_id=os.environ.get("KEYCLOAK_API_CLIENT_ID", "foc-api"),
+        client_secret=os.environ.get("KEYCLOAK_API_CLIENT_SECRET"),
     )
 
 
@@ -75,7 +78,7 @@ async def get_user(
             identity = await run_in_threadpool(get_keycloak_validator().validate, token)
             return AuthenticatedUser(user_id=identity.user_id, role=identity.role)
 
-        # Temporary compatibility until UI migration. Keycloak mode never falls
+        # Legacy compatibility is explicit. Keycloak mode never falls
         # back to this path, even when validation or signing-key retrieval fails.
         if client is None:
             raise AuthenticationUnavailableError()

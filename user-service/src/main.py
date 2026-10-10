@@ -14,12 +14,15 @@ from auth.orm_models import Base
 from auth.models import PASSWORD_REQUIREMENTS_MESSAGE
 from auth.views import router as authentication_router
 from auth.dependencies import get_keycloak_validator
+from auth.keycloak import get_keycloak_admin
+from auth.exceptions import AuthenticationUnavailableError, UserNotFoundError
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if settings.auth_provider == "keycloak":
         get_keycloak_validator()
+        get_keycloak_admin()
     engine = get_engine()
 
     async with engine.begin() as connection:
@@ -35,6 +38,16 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan,)
+
+
+@app.exception_handler(AuthenticationUnavailableError)
+async def authentication_unavailable(_request: Request, _exception: AuthenticationUnavailableError):
+    return JSONResponse(status_code=503, content={"detail": "Authentication is temporarily unavailable."})
+
+
+@app.exception_handler(UserNotFoundError)
+async def identity_missing(_request: Request, exception: UserNotFoundError):
+    return JSONResponse(status_code=404, content={"detail": str(exception)})
 
 @app.get("/health")
 async def health_check():

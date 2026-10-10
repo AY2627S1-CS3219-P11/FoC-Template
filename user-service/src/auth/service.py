@@ -28,6 +28,7 @@ from auth.models import (
     UserRoleResponse,
 )
 from auth.repository import (
+    find_user_by_id,
     authentication_session_exists,
     create_authentication_session,
     create_user,
@@ -40,6 +41,7 @@ from auth.repository import (
     update_managed_user_role,
     update_user_profile,
 )
+from auth.keycloak import get_keycloak_admin
 
 
 def hash_access_token(token: str) -> str:
@@ -171,9 +173,26 @@ async def update_user_role(
     request: UpdateUserRoleRequest,
     session: AsyncSession,
 ) -> ManagedUserResponse:
-    user = await update_managed_user_role(session, user_id, request.role)
-    if user is None:
-        raise UserNotFoundError("User not found.")
+    previous = None
+    admin = None
+    if settings.auth_provider == "keycloak":
+        # Serialize identity edits while coordinating the two stores.
+        previous = await find_user_by_id(session, user_id, for_update=True)
+        if previous is None or previous.user_role == "admin_manager":
+            raise UserNotFoundError("User not found.")
+        admin = get_keycloak_admin()
+    try:
+        if admin is not None:
+            await admin.set_role(user_id, request.role)
+            await admin.logout_user(user_id)
+        user = await update_managed_user_role(session, user_id, request.role)
+        if user is None:
+            raise UserNotFoundError("User not found.")
+    except Exception:
+        if admin is not None:
+            await admin.set_role(user_id, previous.user_role)
+            await admin.logout_user(user_id)
+        raise
     return user
 
 
@@ -184,22 +203,34 @@ async def update_current_user_profile(
 ) -> CurrentUserResponse:
     if request.username is not None:
         existing_username = await find_user_by_username(session, request.username)
-        if existing_username is not None and existing_username.id != str(user_id):
+        if existing_username is not None and existing_username.id != user_id:
             raise UserAlreadyExistsError("Username already exists")
 
     if request.email is not None:
         existing_email = await find_user_by_email(session, str(request.email))
-        if existing_email is not None and existing_email.id != str(user_id):
+        if existing_email is not None and existing_email.id != user_id:
             raise UserAlreadyExistsError("Email already exists")
 
-    profile = await update_user_profile(
-        session=session, 
-        user_id=user_id,
-        username=request.username,
-        email=str(request.email) if request.email is not None else None,
-    )
-    if profile is None:
-        raise jwt.InvalidTokenError("The authenticated user no longer exists.")
+    previous = None
+    admin = None
+    if settings.auth_provider == "keycloak":
+        previous = await find_user_by_id(session, user_id, for_update=True)
+        if previous is None:
+            raise jwt.InvalidTokenError("The authenticated user no longer exists.")
+        admin = get_keycloak_admin()
+        await admin.update_profile(user_id, request.username or previous.username,
+            str(request.email) if request.email is not None else str(previous.email))
+    try:
+        profile = await update_user_profile(
+            session=session, user_id=user_id, username=request.username,
+            email=str(request.email) if request.email is not None else None,
+        )
+        if profile is None:
+            raise jwt.InvalidTokenError("The authenticated user no longer exists.")
+    except Exception:
+        if admin is not None:
+            await admin.update_profile(user_id, previous.username, str(previous.email))
+        raise
     return profile
 
 
@@ -211,6 +242,16 @@ async def register_user(request: SignUpRequest, session: AsyncSession) -> UserRe
     existing_username = await find_user_by_username(session, request.username)
     if existing_username is not None:
         raise UserAlreadyExistsError("Username already exists")
+
+    if settings.auth_provider == "keycloak":
+        admin = get_keycloak_admin()
+        user_id = await admin.create_user(request.username, str(request.email), request.password.get_secret_value())
+        try:
+            return await create_user(session=session, username=request.username,
+                email=str(request.email), hashed_password="", user_id=user_id)
+        except Exception:
+            await admin.delete_user(user_id)
+            raise
 
     hashed_password = hash_password(request.password.get_secret_value())
 

@@ -1,11 +1,11 @@
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
 from foc_auth import ApplicationRoleRequiredError, AuthenticationUnavailableError, Identity
 from jwt import InvalidTokenError
 
-from auth import dependencies
+from auth import dependencies, service
 from common.config_manager import settings
 
 
@@ -20,6 +20,7 @@ def keycloak(monkeypatch):
     monkeypatch.setattr(dependencies, "get_keycloak_validator", lambda: validator)
     monkeypatch.setattr(dependencies, "verify_access_token", lambda *_a: pytest.fail("Legacy verification used"))
     monkeypatch.setattr(dependencies, "get_authenticated_user_role", lambda *_a: pytest.fail("Legacy session queried"))
+    monkeypatch.setattr(service, "get_keycloak_admin", lambda: AsyncMock())
     return validator
 
 

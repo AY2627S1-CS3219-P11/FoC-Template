@@ -17,4 +17,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 3001
 
-CMD ["fastapi", "run", "src/main.py", "--port", "3001"]
+CMD ["uvicorn", "main:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "3001"]

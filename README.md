@@ -39,6 +39,8 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 ├── order-service/
 ├── credit-service/
 ├── internal-gateway/
+├── keycloak/
+├── packages/foc-auth/
 ├── <n2h-service>/
 └── README.md
 ```
@@ -57,7 +59,9 @@ All HTTP calls between services use an explicitly configured
 Docker topology; applications do not assume a localhost destination. The [nginx internal
 gateway](internal-gateway/README.md) routes `/user-api/` to user-service and
 `/supplier-api/` to supplier-service, stripping only that service prefix.
-Services keep their existing authentication and authorization responsibilities.
+Services independently validate Keycloak tokens and enforce their existing
+endpoint permissions. Supplier-service no longer calls user-service for access
+verification. See the [authentication setup and account import](keycloak/README.md).
 The UI also proxies API requests through this gateway.
 
 Run `docker compose up --build` from the repository root and open the UI at

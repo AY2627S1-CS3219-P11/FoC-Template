@@ -69,11 +69,54 @@
       "name": "FoC backend APIs",
       "enabled": true,
       "protocol": "openid-connect",
-      "bearerOnly": true,
+      "bearerOnly": false,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
-      "serviceAccountsEnabled": false
+      "serviceAccountsEnabled": false,
+      "publicClient": false,
+      "secret": "${KEYCLOAK_API_CLIENT_SECRET}"
+    },
+    {
+      "clientId": "foc-backend",
+      "name": "FoC backend identity administration",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "${KEYCLOAK_BACKEND_CLIENT_SECRET}",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true
     }
-  ]
+  ],
+  "editUsernameAllowed": true,
+  "users": [
+    {
+      "username": "service-account-foc-backend",
+      "enabled": true,
+      "serviceAccountClientId": "foc-backend",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "view-users",
+          "query-users",
+          "view-realm"
+        ]
+      }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"Username\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"min\":1,\"max\":50}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"email\",\"displayName\":\"Email\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"email\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"firstName\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]}},{\"name\":\"lastName\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]}}],\"unmanagedAttributePolicy\":null}"
+          ]
+        }
+      }
+    ]
+  },
+  "passwordPolicy": "length(8) and maxLength(64) and upperCase(1) and lowerCase(1) and digits(1)"
 }
