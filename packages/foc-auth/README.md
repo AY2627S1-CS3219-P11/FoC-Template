@@ -12,12 +12,18 @@ library's 30-second cooldown, which limits requests from invalid tokens. A signi
 retrieval failure raises `AuthenticationUnavailableError`; an invalid token
 raises `jwt.InvalidTokenError`; a valid token without an application role raises
 `ApplicationRoleRequiredError`. Service dependencies translate these to HTTP
-503, 401 and 403 respectively. JWKS fetching runs in a worker thread.
+503, 401 and 403 respectively. JWKS fetching runs in a worker thread. Both backends configure token introspection
+with the confidential API client after signature validation. Inactive sessions
+raise `jwt.InvalidTokenError`; failed introspection raises
+`AuthenticationUnavailableError`. There is no active-session cache, so logout
+and role edits take effect on the next protected request. This makes Keycloak
+availability a dependency even while signing keys are cached. Future services
+must configure introspection too if they require the same revocation behavior.
 
 Run the cryptographic and key-rotation tests from the repository root:
 
 ```sh
-uv run --project supplier-service --locked pytest packages/foc-auth/tests -q
+uv run --directory supplier-service --locked pytest ../packages/foc-auth/tests -q
 ```
 
 Backend Dockerfiles now use the repository root as their build context to include

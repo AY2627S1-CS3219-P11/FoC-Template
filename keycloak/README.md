@@ -1,141 +1,161 @@
-# Keycloak local development
+# Keycloak authentication
 
-This setup provides identity infrastructure, a realm template and opt-in
-backend token validation. The existing UI still uses legacy authentication by
-default. No application users are migrated or created by this setup.
+The UI signs in through Keycloak using authorization code flow with S256 PKCE.
+Access and refresh tokens stay in memory. Before authenticated API calls, the UI
+refreshes its access token and sends it as an Authorization bearer token through
+the routing gateway. Both backends independently validate the signature,
+issuer, audience, expiry, UUID subject and application role. They also check the
+Keycloak session through token introspection so logout and role changes revoke
+existing access immediately. Supplier-service never calls user-service to
+verify a Keycloak token. A Keycloak outage returns 503 for protected requests.
 
-## Start independently
+User-service owns application account creation and profile/role edits, calling
+Keycloak administration to keep both stores in sync. New accounts use the same
+UUID in both stores; Keycloak owns their password. Existing application data,
+supplier audit IDs, requester/courier selection and RabbitMQ behavior are retained.
+The gateway forwards Authorization headers and continues to handle routing.
 
-Start Docker Desktop. From the repository root, create `.env` from `.env.example`
-if it does not exist, then fill the `KEYCLOAK_*` variables. For an existing `.env`,
-add the new variables without replacing other settings. The example passwords
-are local development placeholders.
+## Local setup
+
+Start Docker Desktop. Copy the root `.env.example` and both backend examples to
+`.env` if needed; preserve existing database and bootstrap account values.
+Set `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD` and
+`KEYCLOAK_BACKEND_CLIENT_SECRET` and `KEYCLOAK_API_CLIENT_SECRET` to separate local secrets in the root `.env`.
+Never put either client secret in a UI `VITE_*` variable. Configure the
+application databases in their existing service environment files.
+
+To start identity infrastructure independently from the repository root:
 
 ```sh
-docker compose -p foc-template --env-file .env -f keycloak/compose.yaml config --quiet
 docker compose -p foc-template --env-file .env -f keycloak/compose.yaml up -d --wait
+python3 keycloak/configure.py --env-file .env
 ```
 
-This starts only Keycloak and its PostgreSQL database; it needs no Neon, RabbitMQ,
-or application service credentials. Root `docker compose up` also includes them.
-The commands set `-p foc-template`, matching the default root project name, so
-they share containers and the database volume. If you use a custom root project
-name, use that same name for the standalone commands.
+The script updates clients, service-account permissions and profile settings
+in an existing realm without deleting application users. Run it after changing
+this configuration or when upgrading a previously started local realm. Startup
+realm import alone skips realms that already exist. Bootstrap admin credentials
+apply only on first initialization; changing `.env` does not reset that password.
 
-Open the admin console at <http://localhost:8080/admin/>. Sign in using
-`KEYCLOAK_ADMIN_USERNAME` and `KEYCLOAK_ADMIN_PASSWORD`, then select the `foc` realm.
-If you change `KEYCLOAK_HTTP_PORT`, use that port instead of 8080 below.
+Use the same Compose project name for standalone and root commands so they share
+the Keycloak database volume. Open <http://localhost:8080/admin/> using the root
+`KEYCLOAK_ADMIN_USERNAME` and `KEYCLOAK_ADMIN_PASSWORD`. This infrastructure admin
+is separate from the FoC application's `admin_manager` account.
+
+For an empty application database, user-service creates the configured initial
+admin manager in Keycloak and PostgreSQL at startup. For an existing database,
+complete the account import below before switching the application to Keycloak.
+Then set root `AUTH_PROVIDER=keycloak` and start the stack:
 
 ```sh
-curl --fail http://localhost:8080/realms/foc/.well-known/openid-configuration
-curl --fail http://localhost:8080/realms/foc/protocol/openid-connect/certs
-docker compose -p foc-template --env-file .env -f keycloak/compose.yaml ps
+docker compose up -d --build
 ```
 
-Both containers should be healthy. Readiness checks include Keycloak's database
-connection; the management port and PostgreSQL have no published host ports.
-Keycloak's HTTP port is bound to loopback.
+Open <http://localhost:4173>. Host-run UI development uses `ui/.env.local`,
+including `VITE_AUTH_PROVIDER=keycloak`, and needs a reachable internal gateway.
+Host-run backends use `KEYCLOAK_SERVER_URL=http://localhost:8080` and the public
+JWKS URL; copy the API client secret into both backend environment files and the
+administration client secret into user-service only.
+Docker backends use `http://keycloak:8080` internally but validate the public
+issuer `http://localhost:8080/realms/foc`. If changing Keycloak's port, update
+`KEYCLOAK_PUBLIC_URL`, `KEYCLOAK_ISSUER` and host-run settings to match, then
+rebuild the UI. Browser auth configuration is embedded at build time.
 
-## Realm configuration
+## Account flows
 
-`realms/foc-realm.json` imports on first startup:
+- Signup retains the UI's form and validation. User-service creates a Keycloak
+  account with the `user` role, then stores its UUID and application profile.
+  New passwords are not hashed or stored in the application database.
+- Sign in redirects to Keycloak. The legacy password-login endpoint returns 409
+  in Keycloak mode; it does not issue legacy sessions or cookies.
+- Profile edits update Keycloak and the application profile. Keycloak's account
+  console cannot independently edit username/email, avoiding profile drift.
+- Admin managers can grant/revoke `admin` access through the existing portal.
+  Role edits synchronize both stores and revoke the target user's sessions;
+  the user signs in again to obtain current permissions. Admin managers remain
+  protected from this endpoint.
+- UI logout ends the Keycloak browser session. The backend logout endpoint also
+  supports revoking the session identified by a bearer token for API clients.
+
+When an application database operation fails after changing Keycloak, the service
+attempts to undo the identity change. This is a compensating operation across two
+systems, not a distributed transaction. If Keycloak is unavailable during that
+undo, reconcile the affected identity before retrying. Make application account
+and role changes through user-service rather than manually editing Keycloak.
+
+## Existing-account import
+
+Existing PostgreSQL user UUIDs must be preserved: they are already referenced by
+other services. No accounts are automatically linked by email. Stop account
+creation/profile/role writes while taking and importing the account snapshot.
+This command only reads the configured application database and writes local
+files; it does not import users or modify PostgreSQL:
+
+```sh
+cd user-service
+uv run --locked python -m auth.export_keycloak_users --output ../keycloak/generated/account-import
+```
+
+It creates `foc-users.json` and `temporary-passwords.csv` with restrictive file
+permissions. The output folder is git-ignored and files are never overwritten.
+In the Keycloak admin console, select `foc`, open the realm's partial import
+(action menu), and import `foc-users.json` with users selected and conflicts set
+to **Fail**. Check that imported IDs equal the application's UUIDs and all three
+application roles are represented correctly, including the admin manager.
+
+Existing bcrypt password hashes are not imported. Each user gets a unique
+random temporary password from the CSV and must set a new password on first
+login. Deliver those credentials privately; delete the generated files after the
+handoff. The initial admin's environment password does not replace a migrated
+account's temporary password. Email-based password reset needs SMTP configuration
+and remains disabled in the local realm. Finish import before enabling Keycloak
+on the UI and both backends together. `AUTH_PROVIDER=legacy` remains available
+for the previous application flow, but newly created Keycloak accounts have no
+legacy password and cannot use that login.
+
+## Realm and database
 
 | Setting | Value |
 | --- | --- |
 | Realm | `foc` |
-| Browser client | `foc-ui`, public client, authorization code with S256 PKCE |
-| API audience | `foc-api`, included in UI access tokens |
+| Browser client | Public `foc-ui`, authorization code and S256 PKCE |
+| API audience / introspection client | Confidential `foc-api`, with no service account or administration roles |
+| Backend client | Confidential `foc-backend`, service account for user administration, available to user-service only |
 | Application roles | `user`, `admin`, `admin_manager` |
 | UI origins | `localhost` and `127.0.0.1`, ports 4173 and 5173 |
-| Access token lifespan | 5 minutes |
-| Self-registration / password reset | Disabled until account provisioning / email are integrated |
+| Access token lifespan | Five minutes, refreshed by the UI before requests |
+| Self-registration | Disabled; application signup provisions both stores |
 
-No application accounts or client secrets are embedded in the realm file.
-For manual development testing, create a user in the `foc` realm, set a password,
-and explicitly assign the appropriate application role. The bootstrap admin is
-an infrastructure administrator in the `master` realm, not a FoC application user.
+`keycloak-db` owns a separate `keycloak-postgres-data` volume. Its `KEYCLOAK_DB_*`
+credentials are independent of Neon and the application databases. PostgreSQL
+and Keycloak's management port have no published host ports. The HTTP port is
+bound to loopback. Stopping containers retains identity data; deleting the volume
+removes accounts. The root realm file contains environment placeholders for
+the client secrets, not committed credentials.
 
-Application integration should use issuer `http://localhost:8080/realms/foc` and
-validate audience `foc-api`. Docker backends can retrieve signing keys at
-`http://keycloak:8080/realms/foc/protocol/openid-connect/certs`, while still
-validating the public issuer above. Container `localhost` refers to the container,
-so do not use it as the backend's network address for Keycloak.
+Cloud hosting is configured separately: this local stack uses `start-dev` and
+HTTP. Production requires HTTPS, deployment-specific hostname/origins, secrets,
+production startup settings and a persistent identity database.
 
-Realm roles will appear under `realm_access.roles`; backends must select the
-application roles rather than treating every built-in Keycloak role as a FoC role.
-Account UUID mapping, signup events, profile synchronization, role changes and
-logout invalidation still need to be integrated.
-
-## Persistence and realm changes
-
-`keycloak-db` owns a separate `keycloak-postgres-data` named volume. Its credentials
-are the `KEYCLOAK_DB_*` variables, independent of the application databases.
-Stopping containers preserves identity data:
+## Validation
 
 ```sh
-docker compose -p foc-template --env-file .env -f keycloak/compose.yaml stop
+uv run --directory user-service --locked pytest -q
+uv run --directory supplier-service --locked pytest -q
+uv run --directory supplier-service --locked pytest ../packages/foc-auth/tests -q
+cd ui
+npm run build
+npm run lint
 ```
 
-Startup import skips realms that already exist. Editing the JSON and restarting
-will not update an existing `foc` realm. Apply changes through the admin console
-or delete just the disposable `foc` realm in the console and restart Keycloak to
-reimport it; deletion removes its users and configuration. Do not use root
-`docker compose down --volumes` as a realm reset, because it affects other volumes.
-Bootstrap admin credentials also apply only to first initialization; changing
-the environment does not change an existing admin's password.
+Swagger accepts a Keycloak **access token** using Authorize at
+<http://127.0.0.1:5005/docs> and <http://127.0.0.1:3001/docs>. User-service requires
+the signed subject to exist in its application database; supplier audit fields
+use that subject UUID. Supplier listing remains public; writes require `admin`
+or `admin_manager`. Invalid/inactive tokens return 401, insufficient roles 403,
+and unavailable identity verification 503. Legacy tokens are rejected in
+Keycloak mode without falling back to user-service.
 
-## Deployment scope
-
-This Compose configuration uses `start-dev` and local HTTP. Cloud hosting will
-be configured separately with a production startup configuration, HTTPS,
-deployment-specific hostname, credentials and persistent database. The local
-settings do not change application authentication or gateway routing.
-
-References: [container setup](https://www.keycloak.org/server/containers),
-[realm imports](https://www.keycloak.org/server/importExport),
-[health checks](https://www.keycloak.org/observability/health).
-
-## Infrastructure validation
-
-Validated in an isolated Compose project:
-
-- Root and standalone Compose configuration match, including the realm mount.
-- PostgreSQL and Keycloak reach healthy status, with successful realm import.
-- The realm survives stopping/restarting both containers; import skips it on restart.
-- Discovery, signing keys, application roles and UI client settings are present.
-- An authorization-code login with S256 PKCE produces an access token containing
-  the expected issuer, subject, email, `user` role and `foc-api` audience.
-
-This verifies identity infrastructure, not integration with the application UI
-or protected backend endpoints. Those remain on the existing authentication.
-
-## Backend validation
-
-Both services install [`packages/foc-auth`](../packages/foc-auth/README.md) and
-can validate Keycloak access tokens locally. The gateway continues to route
-requests and forward their Authorization headers.
-
-For isolated backend validation, set `AUTH_PROVIDER=keycloak` in the root `.env`
-and recreate both backend containers. The root `.env.example` contains issuer,
-audience and signing-key URL settings. Start Keycloak before sending protected
-requests. In this mode supplier-service makes no verification call to user-service,
-and user-service does not consult its legacy authentication-session table.
-
-Use a Keycloak access token in each Swagger Authorize dialog. User-service also
-requires the token's subject UUID to exist in its application database. Supplier
-audit fields use that same UUID. Plan existing-account import with preserved IDs;
-do not link accounts by matching email addresses.
-
-Keep `AUTH_PROVIDER=legacy` for the current UI. UI login/refresh/logout,
-Keycloak account creation, profile synchronization, role-edit synchronization,
-and migration of existing users still need to be integrated. The existing database role
-editing endpoint does not update Keycloak yet. Local JWT validation also cannot
-immediately invalidate an already-issued token after logout or a role change.
-Do not treat backend validation mode as the completed application cutover.
-
-```sh
-uv run --project supplier-service --locked pytest -q
-uv run --project user-service --locked pytest -q
-uv run --project supplier-service --locked pytest packages/foc-auth/tests -q
-docker compose build user-service supplier-service
-```
+References: [JavaScript adapter](https://www.keycloak.org/securing-apps/javascript-adapter),
+[containers](https://www.keycloak.org/server/containers),
+[realm imports](https://www.keycloak.org/server/importExport).
