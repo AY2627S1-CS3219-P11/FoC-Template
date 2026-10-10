@@ -13,10 +13,13 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
-import httpx
-from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, field_validator
+from fastapi import Depends, FastAPI, HTTPException, status
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from foc_auth import auth_provider
+from auth.dependencies import (
+    AuthenticatedUser, get_user, get_internal_gateway_url,
+    get_internal_gateway_client, get_keycloak_validator,
+)
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -160,7 +163,10 @@ async def seed_database_from_csv(engine: AsyncEngine, csv_path: Path) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Validate required destinations before connecting to external dependencies.
-    get_internal_gateway_url()
+    if auth_provider(os.environ.get("AUTH_PROVIDER", "legacy")) == "keycloak":
+        get_keycloak_validator()
+    else:
+        get_internal_gateway_url()
     rabbitmq_url = get_required_env("RABBITMQ_URL")
     csv_path = (
         Path(__file__).resolve().parent.parent
@@ -255,83 +261,6 @@ async def get_suppliers(
         return [SupplierResponse.parse(supplier) for supplier in suppliers.all()]
     except Exception as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
-
-
-class AuthenticatedUser(BaseModel):
-    user_id: UUID
-    role: str
-
-
-def get_internal_gateway_url() -> str:
-    value = get_required_env("INTERNAL_GATEWAY_URL")
-    message = "INTERNAL_GATEWAY_URL must be an HTTP(S) origin without credentials, a path, query, or fragment"
-    try:
-        url = AnyHttpUrl(value)
-    except ValidationError as error:
-        raise RuntimeError(message) from error
-    if url.path not in {None, "", "/"} or any(
-        part is not None for part in (url.username, url.password, url.query, url.fragment)
-    ):
-        raise RuntimeError(message)
-    return str(url).rstrip("/")
-
-
-async def get_internal_gateway_client() -> AsyncIterator[httpx.AsyncClient]:
-    base_url = get_internal_gateway_url()
-    async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
-        yield client
-
-
-bearer_scheme = HTTPBearer(auto_error=False)
-
-
-async def get_user(
-    request: Request,
-    client: Annotated[httpx.AsyncClient, Depends(get_internal_gateway_client)],
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None, Security(bearer_scheme)
-    ],
-) -> AuthenticatedUser:
-    token = (
-        credentials.credentials
-        if credentials is not None
-        else request.cookies.get("access_token")
-    )
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="No authentication token found. Please sign in.",
-        )
-
-    try:
-        response = await client.get(
-            "/user-api/authentication/sessions/current",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-    except httpx.RequestError as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication is temporarily unavailable.",
-        ) from error
-
-    if response.status_code == status.HTTP_401_UNAUTHORIZED:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token. Please sign in.",
-        )
-    if not response.is_success:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication is temporarily unavailable.",
-        )
-
-    try:
-        return AuthenticatedUser.model_validate(response.json())
-    except (ValueError, ValidationError) as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Authentication returned an invalid response.",
-        ) from error
 
 
 def require_admin(user: AuthenticatedUser) -> None:

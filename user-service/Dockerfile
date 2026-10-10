@@ -4,11 +4,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.13 /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+COPY user-service/pyproject.toml user-service/uv.lock ./
+COPY packages/foc-auth /packages/foc-auth
 
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY . .
+COPY user-service .
 
 ENV PATH="/app/.venv/bin:$PATH"
 

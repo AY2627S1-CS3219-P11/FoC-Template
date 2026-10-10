@@ -13,10 +13,13 @@ from auth.bootstrap import provision_admin_manager
 from auth.orm_models import Base
 from auth.models import PASSWORD_REQUIREMENTS_MESSAGE
 from auth.views import router as authentication_router
+from auth.dependencies import get_keycloak_validator
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if settings.auth_provider == "keycloak":
+        get_keycloak_validator()
     engine = get_engine()
 
     async with engine.begin() as connection:
@@ -58,6 +61,6 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 

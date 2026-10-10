@@ -2,12 +2,16 @@
 services:
   user-service:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: user-service/Dockerfile
     env_file:
       - .env
     environment:
       INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-legacy}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/foc}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-foc-api}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/foc/protocol/openid-connect/certs}
     ports:
       - "5005:5005"
     healthcheck:

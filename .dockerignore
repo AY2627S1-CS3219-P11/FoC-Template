@@ -1,0 +1,12 @@
+.git
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/dist
+UI Prototype CS3219 (Copy)

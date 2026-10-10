@@ -2,11 +2,15 @@
 services:
   supplier-service:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: supplier-service/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?Set POSTGRES_USER in supplier-service/.env}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in supplier-service/.env}@ep-odd-mode-az7quoka-pooler.c-3.ap-southeast-1.aws.neon.tech/${POSTGRES_DB:?Set POSTGRES_DB in supplier-service/.env}?sslmode=require&channel_binding=require
       INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
+      AUTH_PROVIDER: ${AUTH_PROVIDER:-legacy}
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER:-http://localhost:8080/realms/foc}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-foc-api}
+      KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/foc/protocol/openid-connect/certs}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://admin:admin123@rabbitmq:5672}
     ports:
       - "3001:3001"
