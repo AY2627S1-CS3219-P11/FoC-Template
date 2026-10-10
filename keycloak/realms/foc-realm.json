@@ -1,0 +1,79 @@
+{
+  "realm": "foc",
+  "displayName": "Friend on Campus",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "accessTokenLifespan": 300,
+  "roles": {
+    "realm": [
+      {
+        "name": "user",
+        "description": "Regular FoC user"
+      },
+      {
+        "name": "admin",
+        "description": "FoC supplier administrator"
+      },
+      {
+        "name": "admin_manager",
+        "description": "FoC user access manager"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "foc-ui",
+      "name": "FoC UI",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:4173/*",
+        "http://127.0.0.1:4173/*",
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:4173/*##http://127.0.0.1:4173/*##http://localhost:5173/*##http://127.0.0.1:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "foc-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "foc-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "foc-api",
+      "name": "FoC backend APIs",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false
+    }
+  ]
+}

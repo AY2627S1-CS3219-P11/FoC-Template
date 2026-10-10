@@ -1,0 +1,59 @@
+# Local development infrastructure, also included by ../compose.yaml.
+# Standalone, from the repository root:
+# docker compose --env-file .env -f keycloak/compose.yaml up -d --wait
+services:
+  keycloak-db:
+    image: postgres:17.6-alpine
+    environment:
+      POSTGRES_DB: ${KEYCLOAK_DB_NAME:-keycloak}
+      POSTGRES_USER: ${KEYCLOAK_DB_USER:-keycloak}
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Set KEYCLOAK_DB_PASSWORD in the root .env}
+    volumes:
+      - keycloak-postgres-data:/var/lib/postgresql/data
+    # The identity database is private to the Docker network; no host port.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL_HOST: keycloak-db
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB_NAME:-keycloak}
+      KC_DB_USERNAME: ${KEYCLOAK_DB_USER:-keycloak}
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?Set KEYCLOAK_DB_PASSWORD in the root .env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Set KEYCLOAK_ADMIN_PASSWORD in the root .env}
+      # Keep the token issuer stable for browser and backend validation.
+      KC_HOSTNAME: http://localhost:${KEYCLOAK_HTTP_PORT:-8080}
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+    ports:
+      - "127.0.0.1:${KEYCLOAK_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./realms:/opt/keycloak/data/import:ro
+    depends_on:
+      keycloak-db:
+        condition: service_healthy
+    healthcheck:
+      # The stock image has Bash but no curl. Management port stays internal.
+      test:
+        - CMD
+        - bash
+        - -ec
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000;
+          printf 'HEAD /health/ready HTTP/1.0\r\n\r\n' >&3;
+          IFS= read -r status <&3;
+          [[ "$$status" == *" 200 "* ]]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+volumes:
+  keycloak-postgres-data:
