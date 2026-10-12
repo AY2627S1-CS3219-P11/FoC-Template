@@ -59,3 +59,21 @@ npm run build
 ```sh
 npm run preview
 ```
+
+## Authentication
+
+The Docker build uses Keycloak by default. For host development, copy the
+`VITE_AUTH_PROVIDER`, `VITE_KEYCLOAK_URL`, `VITE_KEYCLOAK_REALM` and
+`VITE_KEYCLOAK_CLIENT_ID` settings from `.env.example` into `.env.local`.
+Keycloak browser settings are public build-time configuration; never expose a
+backend client secret through a `VITE_*` setting.
+
+Login uses Keycloak's authorization-code flow with S256 PKCE. Tokens stay in
+memory and are refreshed before authenticated requests. Signup, profiles,
+account-role selection, the admin-manager portal and supplier management retain
+their application screens. Logout ends the Keycloak session. Backend services
+check permissions independently for every protected request.
+
+See the [Keycloak guide](../keycloak/README.md) for identity setup and the required
+import of existing accounts. `VITE_AUTH_PROVIDER=legacy` retains the previous UI
+login flow when both backends also use legacy mode.

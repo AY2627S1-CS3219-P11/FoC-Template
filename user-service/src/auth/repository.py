@@ -61,28 +61,47 @@ async def delete_authentication_session(
     await session.commit()
 
 async def create_user(session: AsyncSession,
-                      username: str,email: str, hashed_password: str,) -> UserRecord:
+                      username: str,email: str, hashed_password: str,
+                      user_id: UUID | None = None, role: str = "user",) -> UserRecord:
 
-    user = User(username=username, user_email=email, password_hash=hashed_password,)
+    user = User(username=username, user_email=email, password_hash=hashed_password, user_role=role)
+    if user_id is not None:
+        user.user_id = user_id
 
     session.add(user)
 
     try:
+        await session.flush()
+        record = UserRecord(id=user.user_id, username=user.username,
+            email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role)
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
 
-        constraint = getattr(exc.orig.diag, "constraint_name", None,)
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
 
-        if constraint == "users_username_key" or constraint == "users_email_key":
+        if constraint in {"users_username_key", "users_email_key", "users_user_email_key"} or "UNIQUE constraint failed" in str(exc.orig):
             raise UserAlreadyExistsError("Username or Email already exists.") from None
         
         raise
 
-    await session.refresh(user)
+    return record
 
-    return UserRecord(id=str(user.user_id), username=user.username,
-        email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
+async def find_user_by_id(
+    session: AsyncSession, user_id: UUID, *, for_update: bool = False,
+) -> UserRecord | None:
+    user = await session.get(User, user_id, with_for_update=for_update)
+    if user is None:
+        return None
+    return UserRecord(id=user.user_id, username=user.username, email=user.user_email,
+        hashed_password=user.password_hash, user_role=user.user_role)
+
+
+async def list_identity_import_users(session: AsyncSession) -> list[UserRecord]:
+    users = await session.scalars(select(User).order_by(User.user_id))
+    return [UserRecord(id=u.user_id, username=u.username, email=u.user_email,
+        hashed_password=u.password_hash, user_role=u.user_role) for u in users]
+
 
 async def find_user_by_email(session: AsyncSession, email: str,) -> UserRecord | None:
 
@@ -172,15 +191,14 @@ async def update_managed_user_role(
 
     user.user_role = role
     user.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    await session.commit()
-    await session.refresh(user)
-
-    return ManagedUserResponse(
+    response = ManagedUserResponse(
         user_id=user.user_id,
         username=user.username,
         email=user.user_email,
         role=user.user_role,
     )
+    await session.commit()
+    return response
 
 async def find_user_profile_by_id(session: AsyncSession, user_id: UUID,) -> CurrentUserResponse | None:
 
@@ -213,19 +231,18 @@ async def update_user_profile(session: AsyncSession, user_id: UUID,
         user.user_email = email
 
     user.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    response = CurrentUserResponse(username=user.username, email=user.user_email)
 
     try:
         await session.commit()
     except IntegrityError as exc:
         await session.rollback()
 
-        constraint = getattr(exc.orig.diag, "constraint_name", None,)
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
 
-        if constraint == "users_username_key" or constraint == "users_email_key":
+        if constraint in {"users_username_key", "users_email_key", "users_user_email_key"} or "UNIQUE constraint failed" in str(exc.orig):
             raise UserAlreadyExistsError("Username or Email already exists.") from None
         
         raise
 
-    await session.refresh(user)
-
-    return CurrentUserResponse(username=user.username, email=user.user_email)
+    return response

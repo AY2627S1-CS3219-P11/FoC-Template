@@ -2,11 +2,17 @@ include:
   - path: ./user-service/compose.yaml
   - path: ./supplier-service/compose.yaml
   - path: ./internal-gateway/compose.yaml
+  - path: ./keycloak/compose.yaml
 
 services:
   ui:
     build:
       context: ./ui
+      args:
+        VITE_AUTH_PROVIDER: ${AUTH_PROVIDER:-keycloak}
+        VITE_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
+        VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-foc}
+        VITE_KEYCLOAK_CLIENT_ID: foc-ui
     environment:
       INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
       NGINX_DNS_RESOLVER: ${NGINX_DNS_RESOLVER:-127.0.0.11}

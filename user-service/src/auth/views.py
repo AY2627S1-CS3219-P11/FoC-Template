@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from common.db import get_session
 from common.config_manager import settings
 from auth.dependencies import AdminManagerUser, AuthenticatedUser, bearer_scheme
+from auth.dependencies import get_keycloak_validator
+from auth.keycloak import get_keycloak_admin
+from starlette.concurrency import run_in_threadpool
+from foc_auth import AuthenticationUnavailableError as KeycloakUnavailableError, ApplicationRoleRequiredError
 from auth.exceptions import (
     AuthenticationUnavailableError,
     InvalidCredentialsError,
@@ -52,6 +56,8 @@ async def sign_up(credentials: SignUpRequest, session: Annotated[AsyncSession, D
 @router.post("/sessions", response_model=AuthenticationResponse)
 async def sign_in(credentials: SignInRequest, response: Response, 
                   session: Annotated[AsyncSession, Depends(get_session)],):
+    if settings.auth_provider == "keycloak":
+        raise HTTPException(status_code=409, detail="Sign in through Keycloak.")
     try:
         token = await authenticate_user(credentials, session)
     except InvalidCredentialsError:
@@ -143,7 +149,18 @@ async def sign_out(
         else request.cookies.get("access_token")
     )
     if token:
-        await invalidate_authentication_session(token, session)
+        if settings.auth_provider == "keycloak":
+            try:
+                identity = await run_in_threadpool(get_keycloak_validator().validate, token)
+                if not identity.session_id:
+                    raise InvalidTokenError()
+                await get_keycloak_admin().logout_session(identity.session_id)
+            except (InvalidTokenError, ApplicationRoleRequiredError):
+                return unauthorized_response()
+            except KeycloakUnavailableError:
+                raise AuthenticationUnavailableError() from None
+        else:
+            await invalidate_authentication_session(token, session)
 
     response = Response(status_code=204)
     clear_access_token_cookie(response)

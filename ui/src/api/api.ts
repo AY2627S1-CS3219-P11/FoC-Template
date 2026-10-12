@@ -1,6 +1,7 @@
 import type { APIRequest, APIService, EndpointConfigEntry } from './models';
 import { CampusErrandsAPIError } from './models';
 import { routes } from '../routes';
+import { accessToken, clearAuthentication, usesKeycloak } from '../auth/keycloak';
 
 const apiUrls: Record<APIService, string> = {
     supplier: import.meta.env.VITE_SUPPLIER_API_URL || '/supplier-api',
@@ -147,9 +148,14 @@ export const makeAuthenticatedCampusErrandsAPIRequest = async <TRequest extends 
     options: AuthenticatedRequestOptions = {}
 ): Promise<TResponse> => {
     try {
-        return await makeCampusErrandsAPIRequest<TRequest, TResponse>(request, config);
+        const details = buildRequest(request, config);
+        if (usesKeycloak) {
+            (details.init.headers as Record<string, string>)['Authorization'] = `Bearer ${await accessToken()}`;
+        }
+        return await sendRequest<TResponse>(details);
     } catch (error) {
         if (error instanceof CampusErrandsAPIError && error.status === 401) {
+            if (usesKeycloak) clearAuthentication();
             (options.onUnauthenticated ?? redirectToSignIn)();
         }
         throw error;

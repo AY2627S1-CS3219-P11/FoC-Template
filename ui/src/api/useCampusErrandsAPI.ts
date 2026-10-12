@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { currentSession, logout, usesKeycloak } from '../auth/keycloak'
 import { makeAuthenticatedCampusErrandsAPIRequest, makeCampusErrandsAPIRequest } from './api'
 import type { AuthenticatedRequestOptions } from './api'
 import { endpointConfig } from './endpointConfig'
@@ -36,11 +37,11 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
           request, endpointConfig.user.authentication.signUp,
         ),
       verify: (options?: AuthenticatedRequestOptions) =>
-        makeAuthenticatedCampusErrandsAPIRequest<null, CurrentSession>(
+        usesKeycloak ? currentSession() : makeAuthenticatedCampusErrandsAPIRequest<null, CurrentSession>(
           null, endpointConfig.user.authentication.verify, options,
         ),
       signOut: () =>
-        makeCampusErrandsAPIRequest<null, SignOutResponse>(
+        usesKeycloak ? logout() : makeCampusErrandsAPIRequest<null, SignOutResponse>(
           null, endpointConfig.user.authentication.signOut,
         ),
       getCurrentUser: (options?: AuthenticatedRequestOptions) =>

@@ -9,6 +9,11 @@ from sqlalchemy.pool import StaticPool
 import main
 
 
+@pytest.fixture(autouse=True)
+def legacy_default(monkeypatch):
+    monkeypatch.setenv("AUTH_PROVIDER", "legacy")
+
+
 @pytest.fixture
 def anyio_backend():
     return "asyncio"
