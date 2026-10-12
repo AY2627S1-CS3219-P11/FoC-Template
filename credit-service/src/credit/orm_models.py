@@ -1,7 +1,16 @@
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import BigInteger, CheckConstraint, DateTime, Text, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Text,
+    func,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -29,6 +38,11 @@ class Credit(Base):
         DateTime(timezone=False), nullable=False,
     )
 
+    @property
+    def total_credits(self) -> int:
+        """The wallet total, derived from its two stored balances."""
+        return self.available_credits + self.reserved_credits
+
     __table_args__ = (
         CheckConstraint(
             "available_credits >= 0", name="credits_available_non_negative",
@@ -36,6 +50,37 @@ class Credit(Base):
         CheckConstraint(
             "reserved_credits >= 0", name="credits_reserved_non_negative",
         ),
+    )
+
+
+class CreditReservation(Base):
+    __tablename__ = "credit_reservations"
+
+    order_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("credits.user_id"), nullable=False,
+    )
+    amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default=text("'RESERVED'"),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False, server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=False), nullable=False,
+        server_default=func.now(), onupdate=func.now(),
+    )
+
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="credit_reservations_amount_positive"),
+        CheckConstraint(
+            "status IN ('RESERVED', 'RELEASED', 'TRANSFERRED')",
+            name="credit_reservations_valid_status",
+        ),
+        Index("credit_reservations_user_status_idx", "user_id", "status"),
     )
 
 
