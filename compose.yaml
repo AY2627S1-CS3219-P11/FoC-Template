@@ -1,6 +1,7 @@
 include:
   - path: ./user-service/compose.yaml
   - path: ./supplier-service/compose.yaml
+  - path: ./credit-service/compose.yaml
   - path: ./internal-gateway/compose.yaml
 
 services:
@@ -19,7 +20,6 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     hostname: rabbitmq
-    container_name: foc-rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
@@ -33,3 +33,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+volumes:
+  rabbitmq-data:

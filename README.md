@@ -51,8 +51,9 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 All HTTP calls between services use an explicitly configured
 `INTERNAL_GATEWAY_URL`. Compose supplies `http://internal-gateway` for its known
 Docker topology; applications do not assume a localhost destination. The [nginx internal
-gateway](internal-gateway/README.md) routes `/user-api/` to user-service and
-`/supplier-api/` to supplier-service, stripping only that service prefix.
+gateway](internal-gateway/README.md) routes `/user-api/` to user-service,
+`/supplier-api/` to supplier-service, and `/credit-api/` to credit-service,
+stripping only that service prefix.
 Services keep their existing authentication and authorization responsibilities.
 The UI also proxies API requests through this gateway.
 

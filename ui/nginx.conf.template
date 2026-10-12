@@ -21,6 +21,10 @@ server {
         proxy_pass $internal_gateway$request_uri;
     }
 
+    location /credit-api/ {
+        proxy_pass $internal_gateway$request_uri;
+    }
+
     location / {
         try_files $uri $uri/ /index.html;
     }

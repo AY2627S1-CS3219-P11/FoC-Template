@@ -18,6 +18,7 @@ export default defineConfig(({ mode, command }) => {
       proxy: {
         '/supplier-api': { ...gatewayProxy },
         '/user-api': { ...gatewayProxy },
+        '/credit-api': { ...gatewayProxy },
       },
     },
     define: {
