@@ -1,0 +1,2 @@
+class CreditNotFoundError(ValueError):
+    pass

@@ -6,6 +6,9 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
+      INITIAL_CREDIT_ALLOCATION: ${INITIAL_CREDIT_ALLOCATION:-100}
     ports:
       - "3002:3002"
     healthcheck:
@@ -20,4 +23,6 @@ services:
       start_period: 10s
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      internal-gateway:
         condition: service_healthy

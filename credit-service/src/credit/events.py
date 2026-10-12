@@ -1,11 +1,36 @@
 import asyncio
+from uuid import uuid4
 
-from aio_pika.abc import AbstractIncomingMessage
+import aio_pika
+from aio_pika.abc import AbstractExchange, AbstractIncomingMessage
+from pamqp.commands import Basic
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from credit.models import UserCreated
+from credit.models import CreditAccountsSyncRequested, UserCreated
 from credit.repository import create_credit_account
+
+
+async def request_credit_account_sync(exchange: AbstractExchange) -> None:
+    event = CreditAccountsSyncRequested(event="CreditAccountsSyncRequested")
+    try:
+        async with asyncio.timeout(5):
+            confirmation = await exchange.publish(
+                aio_pika.Message(
+                    body=event.model_dump_json().encode("utf-8"),
+                    content_type="application/json",
+                    type="CreditAccountsSyncRequested",
+                    message_id=str(uuid4()),
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                ),
+                routing_key="credit.accounts.sync.requested",
+                mandatory=True,
+            )
+        if not isinstance(confirmation, Basic.Ack):
+            raise RuntimeError("RabbitMQ did not confirm credit account reconciliation")
+    except Exception:
+        raise RuntimeError("Could not request credit account reconciliation") from None
+    print("Credit account reconciliation requested; missing accounts will be initialized asynchronously.")
 
 
 async def consume_user_created(
