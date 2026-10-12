@@ -5,6 +5,7 @@ import datetime
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import insert
 
 from auth.orm_models import AuthenticationSession, User, UserCreatedOutbox
 from auth.models import (
@@ -88,6 +89,33 @@ async def create_user(session: AsyncSession,
 
     return UserRecord(id=str(user.user_id), username=user.username,
         email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
+
+
+async def enqueue_user_created_events(session: AsyncSession) -> None:
+    """Queue existing users for replay; Credit ignores wallets already initialized."""
+    users = await session.stream(
+        select(User.user_id, User.created_at).order_by(User.user_id)
+    )
+    try:
+        async for batch in users.partitions(1_000):
+            pending = [
+                {
+                    "user_id": user.user_id,
+                    "payload": UserCreated(
+                        user_id=user.user_id, created_at=user.created_at,
+                    ).model_dump_json(),
+                }
+                for user in batch
+            ]
+            await session.execute(
+                insert(UserCreatedOutbox).values(pending).on_conflict_do_nothing(
+                    index_elements=[UserCreatedOutbox.user_id],
+                )
+            )
+    finally:
+        await users.close()
+    await session.commit()
+
 
 async def find_user_by_email(session: AsyncSession, email: str,) -> UserRecord | None:
 

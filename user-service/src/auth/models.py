@@ -69,6 +69,10 @@ class UserCreated(BaseModel):
     created_at: datetime.datetime
 
 
+class CreditAccountsSyncRequested(BaseModel):
+    event: Literal["CreditAccountsSyncRequested"]
+
+
 class UserRoleResponse(BaseModel):
     user_id: UUID
     role: UserRole
