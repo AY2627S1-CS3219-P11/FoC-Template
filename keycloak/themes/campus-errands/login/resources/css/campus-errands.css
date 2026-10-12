@@ -1,0 +1,240 @@
+/* Match ui/src/index.css, AuthLayout.module.css and Authentication.module.css. */
+:root {
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  color: #283a31;
+  background: #f8f9f3;
+  color-scheme: light;
+  font-synthesis: none;
+}
+
+* { box-sizing: border-box; }
+
+html.login-pf,
+.login-pf body {
+  min-height: 100%;
+  margin: 0;
+  color: #283a31;
+  background: #f8f9f3;
+  font-family: 'Avenir Next', Avenir, 'Segoe UI', sans-serif;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea { font: inherit; }
+
+:focus-visible {
+  outline: 2px solid #286749;
+  outline-offset: 3px;
+}
+
+.foc-layout {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(420px, 0.92fr);
+}
+
+.foc-story {
+  padding: 50px 11%;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 64px;
+  background: radial-gradient(circle at 15% 18%, rgb(255 255 255 / 42%), transparent 28%), #e5ebdb;
+  border-right: 1px solid #d5ddce;
+}
+
+.foc-wordmark,
+.foc-wordmark:hover,
+.foc-wordmark:focus {
+  width: fit-content;
+  display: flex;
+  flex-direction: column;
+  color: #283a31;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 0.88;
+  letter-spacing: -0.055em;
+  text-decoration: none;
+}
+
+.foc-wordmark span {
+  margin-left: 24px;
+  font-style: italic;
+  font-weight: 400;
+}
+
+.foc-eyebrow {
+  margin: 0;
+  color: #647066;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.foc-story-content h1 {
+  margin: 22px 0;
+  color: #283a31;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  font-size: clamp(2.8rem, 4.6vw, 4.9rem);
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  line-height: 1.08;
+}
+
+.foc-story-content h1 em { color: #426549; font-weight: 400; }
+
+.foc-description {
+  max-width: 38ch;
+  margin: 0;
+  color: #626e63;
+  font-size: 0.92rem;
+  line-height: 1.8;
+}
+
+.foc-steps {
+  margin: 0;
+  padding: 24px 0 0;
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #bdc8b7;
+  color: #626e63;
+  font-size: 0.74rem;
+  list-style: none;
+}
+
+.foc-steps li { display: grid; grid-template-columns: 30px 1fr; gap: 8px; }
+.foc-steps span { color: #426549; font-variant-numeric: tabular-nums; }
+
+.foc-form-section {
+  padding: 56px 10%;
+  display: grid;
+  align-items: center;
+}
+
+.foc-form-section .card-pf {
+  width: 100%;
+  max-width: 400px;
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.foc-form-section .login-pf-header { margin: 0; text-align: left; }
+
+.foc-form-section #kc-page-title {
+  margin: 14px 0 30px;
+  color: #283a31;
+  font-family: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  font-size: clamp(2.35rem, 4vw, 2.9rem);
+  font-weight: 400;
+  letter-spacing: -0.045em;
+  line-height: 1.1;
+}
+
+.foc-form-section #kc-content-wrapper { margin: 0; }
+.foc-form-section .form-group { margin: 0 0 18px; }
+.foc-form-section .form-horizontal .form-group { margin-left: 0; margin-right: 0; }
+.foc-form-section #kc-form-buttons { margin-bottom: 0; }
+.foc-form-section .login-pf-settings:empty { display: none; }
+
+.foc-form-section label,
+.foc-form-section .pf-c-form__label {
+  display: block;
+  margin-bottom: 8px;
+  padding: 0;
+  color: #34463c;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.foc-form-section input:not([type='checkbox']):not([type='radio']):not([type='hidden']):not([type='submit']),
+.foc-form-section select,
+.foc-form-section textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  color: #283a31;
+  background: #fff;
+  border: 1px solid #c8d1c2;
+  border-radius: 5px;
+  font-size: 1rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.foc-form-section input:focus,
+.foc-form-section select:focus,
+.foc-form-section textarea:focus {
+  border-color: #286749;
+  box-shadow: 0 0 0 3px rgb(40 103 73 / 13%);
+}
+
+.foc-form-section input[aria-invalid='true'] { border-color: #a54c38; }
+.foc-form-section .pf-c-input-group { position: relative; background: transparent; }
+.foc-form-section #password { padding-right: 62px; }
+
+.foc-form-section button[data-password-toggle] {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0 8px;
+  color: #426549;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  z-index: 1;
+}
+
+.foc-form-section .pf-c-button::after { border: 0; }
+.foc-form-section .pf-c-button.pf-m-primary {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 18px;
+  color: #fff;
+  background: #286749;
+  border: 1px solid #286749;
+  border-radius: 5px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.foc-form-section .pf-c-button.pf-m-primary:hover:not(:disabled) { background: #1f573d; }
+.foc-form-section .pf-c-button:disabled { cursor: not-allowed; opacity: 0.58; }
+.foc-form-section a { color: #286749; text-underline-offset: 4px; }
+.foc-form-section .kc-feedback-text { color: #a54c38; font-size: 0.8rem; }
+.foc-form-section .pf-c-alert { margin-bottom: 18px; border-radius: 5px; }
+.foc-form-section #kc-info-wrapper { padding: 16px 0; background: transparent; }
+.foc-footer { margin: 24px 0 0; color: #687369; font-size: 0.8rem; line-height: 1.55; }
+.foc-footer a { font-weight: 700; }
+
+@media (max-width: 760px) {
+  .foc-layout { grid-template-columns: 1fr; }
+  .foc-story {
+    padding: 28px 24px;
+    gap: 30px;
+    border-right: 0;
+    border-bottom: 1px solid #d5ddce;
+  }
+  .foc-story-content h1 { margin: 14px 0; font-size: 2.65rem; }
+  .foc-description, .foc-steps { display: none; }
+  .foc-form-section { padding: 38px 24px 48px; align-items: start; }
+}
+
+@media (max-width: 420px) {
+  .foc-story-content { display: none; }
+  .foc-story { padding: 24px; }
+  .foc-form-section { padding: 30px 20px 40px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .foc-layout * { transition: none !important; scroll-behavior: auto; }
+}

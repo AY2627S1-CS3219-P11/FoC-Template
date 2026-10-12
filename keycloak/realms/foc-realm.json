@@ -1,6 +1,7 @@
 {
   "realm": "foc",
   "displayName": "Friend on Campus",
+  "loginTheme": "campus-errands",
   "enabled": true,
   "sslRequired": "external",
   "registrationAllowed": false,

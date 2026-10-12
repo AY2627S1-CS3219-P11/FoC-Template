@@ -58,7 +58,8 @@ def configure(url: str, values: dict):
         request("POST", "/admin/realms", template, admin)
     else:
         request("PUT", root, {"editUsernameAllowed": True,
-            "passwordPolicy": template["passwordPolicy"]}, admin)
+            "passwordPolicy": template["passwordPolicy"],
+            "loginTheme": template["loginTheme"]}, admin)
         for role in template["roles"]["realm"]:
             if request("GET", root + f"/roles/{role['name']}", token=admin, missing_ok=True) is None:
                 request("POST", root + "/roles", role, admin)
