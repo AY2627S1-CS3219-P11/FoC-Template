@@ -1,21 +1,20 @@
 include:
   - path: ./user-service/compose.yaml
   - path: ./supplier-service/compose.yaml
+  - path: ./internal-gateway/compose.yaml
 
 services:
   ui:
     build:
       context: ./ui
     environment:
-      USER_API_UPSTREAM: http://user-service:5005
-      SUPPLIER_API_UPSTREAM: http://supplier-service:3001
+      INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
+      NGINX_DNS_RESOLVER: ${NGINX_DNS_RESOLVER:-127.0.0.11}
     ports:
       - "4173:80"
     depends_on:
-      user-service:
+      internal-gateway:
         condition: service_healthy
-      supplier-service:
-        condition: service_started
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -31,8 +30,3 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-
-  # Override the standalone supplier service's host-based integration target.
-  # supplier-service:
-  #   environment:
-  #     USER_SERVICE_URL: http://user-service:5005

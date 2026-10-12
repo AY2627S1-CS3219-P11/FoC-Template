@@ -1,0 +1,41 @@
+server {
+    listen 80;
+    server_name _;
+
+    # Resolve peers at request time so the gateway can start before them and
+    # pick up new container IPs without a reload or circular dependencies.
+    # Docker's resolver is a deployment default in Compose, not application code.
+    resolver ${NGINX_DNS_RESOLVER} valid=10s ipv6=off;
+    resolver_timeout 2s;
+    set $user_upstream "${USER_SERVICE_UPSTREAM}";
+    set $supplier_upstream "${SUPPLIER_SERVICE_UPSTREAM}";
+
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 30s;
+
+    location = /health {
+        access_log off;
+        default_type application/json;
+        return 200 '{"status":"healthy","service":"internal-gateway"}';
+    }
+
+    location /user-api/ {
+        rewrite ^/user-api/(.*)$ /$1 break;
+        proxy_pass $user_upstream;
+    }
+
+    location /supplier-api/ {
+        rewrite ^/supplier-api/(.*)$ /$1 break;
+        proxy_pass $supplier_upstream;
+    }
+
+    location / {
+        return 404;
+    }
+}
