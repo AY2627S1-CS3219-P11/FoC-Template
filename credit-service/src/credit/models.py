@@ -15,6 +15,18 @@ class CreditResponse(BaseModel):
     reserved_credits: int = Field(ge=0, le=MAX_CREDITS, strict=True)
 
 
+class CreditAuditLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    log_id: UUID
+    user_id: UUID
+    recipient_user_id: UUID | None = None
+    order_id: UUID | None = None
+    action: Literal["INITIAL_ALLOCATION", "RESERVE", "RELEASE", "TRANSFER"]
+    amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
+    created_at: datetime.datetime
+
+
 class CreditReservationResult(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
