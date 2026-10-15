@@ -47,3 +47,18 @@ class UserCreated(BaseModel):
 
 class CreditAccountsSyncRequested(BaseModel):
     event: Literal["CreditAccountsSyncRequested"]
+
+
+class ReserveCreditCommand(BaseModel):
+    order_id: UUID
+    requester_id: UUID
+    amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
+
+
+class ReleaseCreditCommand(BaseModel):
+    order_id: UUID
+
+
+class TransferCreditCommand(BaseModel):
+    order_id: UUID
+    courier_id: UUID
