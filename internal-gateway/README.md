@@ -2,17 +2,18 @@
 
 Nginx routes HTTP calls through one configured `INTERNAL_GATEWAY_URL`:
 
-| Gateway path | Backend path | Compose backend |
-| --- | --- | --- |
-| `/user-api/<path>` | `/<path>` | `user-service:5005` |
+| Gateway path           | Backend path | Compose backend         |
+|------------------------| --- |-------------------------|
+| `/user-api/<path>`     | `/<path>` | `user-service:5005`     |
 | `/supplier-api/<path>` | `/<path>` | `supplier-service:3001` |
+| `/order-api/<path>`    | `/<path>` | `order-service:3001`    |
 | `/credit-api/<path>` | `/<path>` | `credit-service:3002` |
 | `/health` | Gateway liveness check | No backend |
 
 The gateway strips only the service prefix and preserves methods, query
 strings, bodies, authorization headers, cookies, and upstream status codes.
 Authentication and authorization remain in the services. Supplier verifies
-callers through `/user-api/authentication/sessions/current`; Credit uses the same
+callers through `/user-api/authentication/sessions/current`; Order and Credit uses the same
 route.
 
 ## Local Docker setup
@@ -26,7 +27,7 @@ docker compose up --build
 Open <http://127.0.0.1:4173>. The request path is:
 
 ```text
-Browser → UI nginx → internal-gateway → user-service / supplier-service / credit-service
+Browser → UI nginx → internal-gateway → user-service / supplier-service / order-service / credit-service
 ```
 
 The gateway listens on port 80 inside Docker and has **no published host port**
@@ -39,11 +40,10 @@ host-port settings or additional Compose files are needed.
 - Compose supplies service names and Docker DNS for this local topology.
   Application code does not assume localhost or silently choose a gateway.
 - Callers configure `INTERNAL_GATEWAY_URL`. Only the gateway configures
-  `USER_SERVICE_UPSTREAM`, `SUPPLIER_SERVICE_UPSTREAM`, and
+  `USER_SERVICE_UPSTREAM`, `SUPPLIER_SERVICE_UPSTREAM`, `ORDER_SERVICE_UPSTREAM` and
   `CREDIT_SERVICE_UPSTREAM`; these must be origins without path prefixes or
   trailing slashes.
-- The nginx images require their runtime URL and resolver settings. Supplier
-  and Credit also refuse to start without their required gateway/dependency
+- The nginx images require their runtime URL and resolver settings. Supplier, Order and Credit also refuse to start without their required gateway/dependency
   configuration.
 - `NGINX_DNS_RESOLVER` is deployment configuration; Compose supplies Docker's
   embedded resolver. The gateway resolves peers dynamically, so it can start
