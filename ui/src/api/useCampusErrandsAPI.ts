@@ -12,6 +12,7 @@ import type { CurrentUserProfile } from '../components/user/models'
 import type {
   ListManagedUsersRequest,
   ManagedUser,
+  ManagedUserPage,
   UpdateManagedUserRoleRequest,
 } from '../pages/adminManagerPortal/models'
 
@@ -27,7 +28,7 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
           null, endpointConfig.user.authentication.getCurrentUser, options,
         ),
       listManagedUsers: (request: ListManagedUsersRequest) =>
-        makeAuthenticatedCampusErrandsAPIRequest<ListManagedUsersRequest, ManagedUser[]>(
+        makeAuthenticatedCampusErrandsAPIRequest<ListManagedUsersRequest, ManagedUserPage>(
           request, endpointConfig.user.authentication.listManagedUsers,
         ),
       updateManagedUserRole: (request: UpdateManagedUserRoleRequest) =>

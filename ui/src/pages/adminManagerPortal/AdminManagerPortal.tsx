@@ -8,6 +8,8 @@ import { routes } from '../../routes'
 import type { ManagedUser, ManagedUserRole } from './models'
 import styles from './AdminManagerPortal.module.css'
 
+const PAGE_SIZE = 25
+
 const roleContent = {
   admin: {
     tab: 'Admin',
@@ -15,7 +17,7 @@ const roleContent = {
     description: 'Review members who can create, edit, and deactivate campus suppliers.',
     placeholder: 'Search admins by username or email',
     action: 'Revoke admin access',
-    empty: 'No admins found.',
+    empty: 'No admins found on this page.',
   },
   user: {
     tab: 'User',
@@ -23,7 +25,7 @@ const roleContent = {
     description: 'Find a campus member and grant supplier administration access.',
     placeholder: 'Search users by username or email',
     action: 'Grant admin access',
-    empty: 'No users found.',
+    empty: 'No users found on this page.',
   },
 } as const
 
@@ -35,24 +37,32 @@ const AdminManagerPortal = () => {
   const [query, setQuery] = useState('')
   const [appliedQuery, setAppliedQuery] = useState('')
   const [users, setUsers] = useState<ManagedUser[]>([])
+  const [offset, setOffset] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const requestIdRef = useRef(0)
 
-  const loadUsers = useCallback(async (role: ManagedUserRole, search = '') => {
+  const loadUsers = useCallback(async (role: ManagedUserRole, search = '', pageOffset = 0) => {
     const requestId = ++requestIdRef.current
     const normalizedQuery = search.trim()
     setIsLoading(true)
     setError(null)
     setAppliedQuery(normalizedQuery)
+    setOffset(pageOffset)
 
     try {
       const result = await api.user.authentication.listManagedUsers({
         role,
         query: normalizedQuery || undefined,
+        offset: pageOffset,
+        limit: PAGE_SIZE,
       })
-      if (requestId === requestIdRef.current) setUsers(result)
+      if (requestId === requestIdRef.current) {
+        setUsers(result.items)
+        setHasMore(result.has_more)
+      }
     } catch (requestError) {
       if (requestId !== requestIdRef.current) return
       setError(requestError instanceof CampusErrandsAPIError
@@ -66,7 +76,10 @@ const AdminManagerPortal = () => {
   useEffect(() => {
     if (session.role !== 'admin_manager') return
     const initialLoad = window.setTimeout(() => void loadUsers(activeRole), 0)
-    return () => window.clearTimeout(initialLoad)
+    return () => {
+      window.clearTimeout(initialLoad)
+      requestIdRef.current += 1
+    }
   }, [activeRole, loadUsers, session.role])
 
   if (session.role !== 'admin_manager') {
@@ -77,6 +90,10 @@ const AdminManagerPortal = () => {
 
   const selectRole = (role: ManagedUserRole) => {
     if (role === activeRole) return
+    requestIdRef.current += 1
+    setIsLoading(true)
+    setOffset(0)
+    setHasMore(false)
     setQuery('')
     setAppliedQuery('')
     setUsers([])
@@ -93,7 +110,7 @@ const AdminManagerPortal = () => {
     setUpdatingId(user.user_id)
     try {
       await api.user.authentication.updateManagedUserRole({ userId: user.user_id, role: nextRole })
-      setUsers((currentUsers) => currentUsers.filter((currentUser) => currentUser.user_id !== user.user_id))
+      await loadUsers(activeRole, appliedQuery)
       showSuccessToast(activeRole === 'admin' ? 'Admin access revoked.' : 'Admin access granted.')
     } catch (requestError) {
       showErrorToast(requestError instanceof CampusErrandsAPIError
@@ -123,6 +140,7 @@ const AdminManagerPortal = () => {
               aria-selected={activeRole === role}
               aria-controls="managed-users-panel"
               onClick={() => selectRole(role)}
+              disabled={updatingId !== null}
             >
               {roleContent[role].tab}
             </button>
@@ -145,7 +163,7 @@ const AdminManagerPortal = () => {
           </div>
 
           <form className={styles.search} role="search" onSubmit={handleSearch}>
-            <label htmlFor="managed-user-search">Search {content.tab.toLowerCase()} accounts</label>
+            <label htmlFor="managed-user-search">Filter {content.tab.toLowerCase()} accounts on each page</label>
             <div>
               <input
                 id="managed-user-search"
@@ -155,20 +173,20 @@ const AdminManagerPortal = () => {
                 placeholder={content.placeholder}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <button type="submit" disabled={isLoading}>Search</button>
+              <button type="submit" disabled={isLoading || updatingId !== null}>Filter</button>
             </div>
           </form>
 
           {error ? (
             <div className={styles.error} role="alert">
               <span>{error}</span>
-              <button type="button" onClick={() => void loadUsers(activeRole, appliedQuery)}>Try again</button>
+              <button type="button" onClick={() => void loadUsers(activeRole, appliedQuery, offset)}>Try again</button>
             </div>
           ) : isLoading ? (
             <p className={styles.state} role="status">Loading {content.tab.toLowerCase()} accounts…</p>
           ) : users.length === 0 ? (
             <p className={styles.state}>
-              {appliedQuery ? `No ${content.tab.toLowerCase()} accounts match “${appliedQuery}”.` : content.empty}
+              {appliedQuery ? `No ${content.tab.toLowerCase()} accounts on this page match “${appliedQuery}”.` : content.empty}
             </p>
           ) : (
             <div className={styles.userList}>
@@ -182,7 +200,7 @@ const AdminManagerPortal = () => {
                   <button
                     type="button"
                     onClick={() => void handleRoleChange(user)}
-                    disabled={updatingId !== null}
+                    disabled={isLoading || updatingId !== null}
                   >
                     {updatingId === user.user_id ? 'Updating…' : content.action}
                   </button>
@@ -190,6 +208,19 @@ const AdminManagerPortal = () => {
               ))}
             </div>
           )}
+          <nav aria-label="Account pages">
+            <button type="button"
+              disabled={isLoading || updatingId !== null || offset === 0}
+              onClick={() => void loadUsers(activeRole, appliedQuery, Math.max(0, offset - PAGE_SIZE))}>
+              Previous
+            </button>
+            <span aria-live="polite"> Page {Math.floor(offset / PAGE_SIZE) + 1} </span>
+            <button type="button"
+              disabled={isLoading || updatingId !== null || !hasMore || error !== null}
+              onClick={() => void loadUsers(activeRole, appliedQuery, offset + PAGE_SIZE)}>
+              Next
+            </button>
+          </nav>
         </section>
       </main>
       <footer className={styles.footer}>Administrator access changes can take up to five minutes to take effect.</footer>

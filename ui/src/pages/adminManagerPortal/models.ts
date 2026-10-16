@@ -10,6 +10,15 @@ export type ManagedUser = {
 export type ListManagedUsersRequest = {
   role: ManagedUserRole
   query?: string
+  offset: number
+  limit: number
+}
+
+export type ManagedUserPage = {
+  items: ManagedUser[]
+  offset: number
+  limit: number
+  has_more: boolean
 }
 
 export type UpdateManagedUserRoleRequest = {

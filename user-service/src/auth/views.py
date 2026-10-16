@@ -6,7 +6,7 @@ from fastapi import APIRouter, Query
 from auth.dependencies import AdminManagerUser, AuthenticatedUser
 from auth.keycloak import get_keycloak_admin
 from auth.models import (
-    CurrentUserResponse, ManagedUserRole, ManagedUserResponse,
+    CurrentUserResponse, ManagedUserPage, ManagedUserRole, ManagedUserResponse,
     UpdateUserRoleRequest, UserRole, UserRoleResponse,
 )
 from auth.service import get_users_for_access_management, update_user_role
@@ -25,7 +25,7 @@ async def get_current_user(user: AuthenticatedUser):
     return await get_keycloak_admin().get_user(user.user_id)
 
 
-@router.get("/users", response_model=list[ManagedUserResponse])
+@router.get("/users", response_model=ManagedUserPage)
 async def get_users(
     _admin_manager: AdminManagerUser,
     role: ManagedUserRole = UserRole.ADMIN,

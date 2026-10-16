@@ -2,16 +2,16 @@ from uuid import UUID
 
 from auth.exceptions import AuthenticationUnavailableError, UserNotFoundError
 from auth.keycloak import get_keycloak_admin
-from auth.models import ManagedUserRole, ManagedUserResponse, UpdateUserRoleRequest
+from auth.models import ManagedUserPage, ManagedUserRole, UpdateUserRoleRequest
 
 
 async def get_users_for_access_management(
     role: ManagedUserRole, query: str | None, offset: int = 0, limit: int = 100,
-) -> list[ManagedUserResponse]:
+) -> ManagedUserPage:
     admin = get_keycloak_admin()
-    members = await admin.role_members(role, first=offset, max_results=limit)
+    members = await admin.role_members(role, first=offset, max_results=limit + 1)
     result = []
-    for member in members:
+    for member in members[:limit]:
         try:
             user_id = UUID(member["id"])
         except (KeyError, ValueError, TypeError) as error:
@@ -26,7 +26,10 @@ async def get_users_for_access_management(
         if query and query.strip().casefold() not in f"{user.username} {user.email}".casefold():
             continue
         result.append(user)
-    return sorted(result, key=lambda user: user.username.casefold())
+    return ManagedUserPage(
+        items=sorted(result, key=lambda user: user.username.casefold()),
+        offset=offset, limit=limit, has_more=len(members) > limit,
+    )
 
 
 async def update_user_role(user_id: UUID, request: UpdateUserRoleRequest) -> ManagedUserResponse:

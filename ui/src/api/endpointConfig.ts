@@ -8,7 +8,7 @@ export const endpointConfig = {
         service: 'user',
         url: '/authentication/users',
         verb: 'GET',
-        fieldMap: { role: 'query', query: 'query' },
+        fieldMap: { role: 'query', query: 'query', offset: 'query', limit: 'query' },
       },
       updateManagedUserRole: {
         service: 'user',

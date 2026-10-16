@@ -49,5 +49,27 @@ async def test_manager_listing_filters_protected_accounts_and_passes_pagination(
     response = await client.get("/authentication/users?offset=100&limit=10",
         headers={"Authorization": "Bearer token"})
     assert response.status_code == 200
-    assert response.json() == []
-    admin.role_members.assert_awaited_once_with("admin", first=100, max_results=10)
+    assert response.json() == {"items": [], "offset": 100, "limit": 10, "has_more": False}
+    admin.role_members.assert_awaited_once_with("admin", first=100, max_results=11)
+
+
+@pytest.mark.anyio
+async def test_filtered_empty_page_still_has_next_page(client, admin, keycloak):
+    keycloak.validate.return_value = Identity(user_id=SUBJECT, role="admin_manager")
+    admin.role_members.return_value = [{"id": str(SUBJECT)}] * 3
+    admin.managed_user.return_value = ManagedUserResponse(
+        user_id=SUBJECT, username="test-user", email="user@example.com", role="user")
+    response = await client.get("/authentication/users?role=user&query=missing&limit=2",
+        headers={"Authorization": "Bearer token"})
+    assert response.status_code == 200
+    assert response.json() == {"items": [], "offset": 0, "limit": 2, "has_more": True}
+    assert admin.managed_user.await_count == 2
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("params", ["offset=-1", "limit=0", "limit=101"])
+async def test_invalid_page_bounds(client, keycloak, params):
+    keycloak.validate.return_value = Identity(user_id=SUBJECT, role="admin_manager")
+    response = await client.get(f"/authentication/users?{params}",
+        headers={"Authorization": "Bearer token"})
+    assert response.status_code == 422

@@ -31,5 +31,12 @@ class ManagedUserResponse(BaseModel):
     role: ManagedUserRole
 
 
+class ManagedUserPage(BaseModel):
+    items: list[ManagedUserResponse]
+    offset: int
+    limit: int
+    has_more: bool
+
+
 class UpdateUserRoleRequest(BaseModel):
     role: ManagedUserRole
