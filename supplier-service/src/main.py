@@ -4,6 +4,7 @@ import datetime
 import os
 import aio_pika
 import json
+import logging
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -24,6 +25,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -253,7 +257,8 @@ async def get_suppliers(
         )
         return [SupplierResponse.parse(supplier) for supplier in suppliers.all()]
     except Exception as error:
-        raise HTTPException(status_code=500, detail=str(error)) from error
+        logger.exception("Could not list suppliers")
+        raise HTTPException(status_code=500, detail="Could not list suppliers") from error
 
 
 def require_admin(user: AuthenticatedUser) -> None:

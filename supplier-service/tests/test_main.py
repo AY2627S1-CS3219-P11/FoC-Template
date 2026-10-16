@@ -1,3 +1,4 @@
+from unittest.mock import AsyncMock
 from uuid import UUID
 
 import pytest
@@ -15,6 +16,18 @@ SUPPLIER = {
 @pytest.mark.anyio
 async def test_health(client):
     assert (await client.get("/health")).json() == {"status": "healthy", "service": "supplier-service"}
+
+
+@pytest.mark.anyio
+async def test_database_errors_are_not_disclosed(client, caplog):
+    session = AsyncMock()
+    session.scalars.side_effect = RuntimeError("database-host private-query-value")
+    main.app.dependency_overrides[main.get_session] = lambda: session
+    response = await client.get("/suppliers")
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Could not list suppliers"}
+    assert "database-host" not in response.text
+    assert "Could not list suppliers" in caplog.text
 
 
 @pytest.mark.anyio
