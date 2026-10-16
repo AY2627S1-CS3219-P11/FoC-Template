@@ -16,20 +16,19 @@ services:
       INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
       NGINX_DNS_RESOLVER: ${NGINX_DNS_RESOLVER:-127.0.0.11}
     ports:
-      - "4173:80"
+      - "127.0.0.1:4173:80"
     depends_on:
       internal-gateway:
         condition: service_healthy
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: foc-rabbitmq
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:5672:5672"
+      - "127.0.0.1:15672:15672"
     environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin123
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?Set RABBITMQ_USER in the root .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in the root .env}
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 10s

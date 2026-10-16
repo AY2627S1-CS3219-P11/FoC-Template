@@ -5,10 +5,15 @@ update, and soft-delete operations.
 
 ## Local Docker setup
 
-After configuring the backend `.env` files, run `docker compose up --build` from
-the repository root. Compose supplies `http://internal-gateway` and the broker
-address. The gateway is reachable on the shared Docker network, not through a
-published host port. See the [gateway guide](../internal-gateway/README.md).
+Configure `SUPPLIER_DATABASE_URL`, `RABBITMQ_USER`, `RABBITMQ_PASSWORD` and
+`RABBITMQ_URL` in the root `.env`, then run `docker compose up --build` from
+the repository root. Supply an async SQLAlchemy PostgreSQL URL for your own
+database; no remote database hostname is built in. Configure TLS for remote
+connections and percent-encode URL credentials. The broker URL credentials must
+match the broker's configured user/password. Host-run services use `DATABASE_URL`
+and a broker URL with `localhost` instead of Docker DNS; export the settings from
+`.env.example` before starting the application. See the
+[gateway guide](../internal-gateway/README.md).
 
 `RABBITMQ_URL` and `DATABASE_URL` are required. Supplier does not call
 user-service for authentication. Other deployment topologies must supply

@@ -63,11 +63,25 @@ endpoint permissions. Supplier-service no longer calls user-service for access
 verification. See the [authentication setup](user-service/keycloak/README.md).
 The UI also proxies API requests through this gateway.
 
+Copy `.env.example` to `.env` and configure the supplier PostgreSQL URL, broker
+credentials and Keycloak secrets. Copy `user-service/.env.example` to
+`user-service/.env` and configure the initial application manager if needed.
+Compose reads supplier destinations from the root `.env`, not supplier-service's
+host-run environment file. No supplier database is provisioned by this stack.
+The obsolete user database development Compose file has been removed:
+user-service no longer owns a SQL identity store.
+
 Run `docker compose up --build` from the repository root and open the UI at
 <http://127.0.0.1:4173>. The gateway is not published on the host; containers
 reach it on the shared Docker network. Only gateway configuration contains
 backend HTTP addresses. RabbitMQ and databases remain separate from HTTP
 routing. Deployment to separate machines requires its own networking configuration
-and is outside this local Compose setup.
+and is outside this local Compose setup. Published local ports bind to loopback.
+
+Configuration-only deployment checks (Docker Compose required):
+
+```sh
+python3 -m unittest discover -s tests -v
+```
 
 ---
