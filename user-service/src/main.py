@@ -1,37 +1,28 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from contextlib import asynccontextmanager
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
-
-from common.db import get_engine
-from common.config_manager import settings
-from auth.bootstrap import provision_admin_manager
-from auth.orm_models import Base
+from auth.bootstrap import initialize_user_service
 from auth.models import PASSWORD_REQUIREMENTS_MESSAGE
 from auth.views import router as authentication_router
+from common.config_manager import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    engine = get_engine()
+    async with initialize_user_service() as resources:
+        app.state.rmq_connection = resources.connection
+        app.state.rmq_channel = resources.channel
+        app.state.user_exchange = resources.user_exchange
+        app.state.session_factory = resources.session_factory
+        app.state.user_event_publisher = resources.publisher
+        yield
 
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
 
-    session_factory = async_sessionmaker(engine, expire_on_commit=False,) # creates admin manager
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
-    async with session_factory() as session:
-        await provision_admin_manager(session)
-
-    yield
-
-    await engine.dispose()
-
-app = FastAPI(title=settings.app_name, lifespan=lifespan,)
 
 @app.get("/health")
 async def health_check():
@@ -39,6 +30,7 @@ async def health_check():
         "status": "healthy",
         "service": "user-service",
     }
+
 
 @app.exception_handler(RequestValidationError)
 async def invalid_request_handler(request: Request, exception: RequestValidationError):
@@ -50,14 +42,3 @@ async def invalid_request_handler(request: Request, exception: RequestValidation
 
 
 app.include_router(authentication_router)
-
-# TODO(team): why do we have CORSMiddleware to 5173? 
-# with ui container running on compose; we likely dont need this anymore
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type"],
-)
-

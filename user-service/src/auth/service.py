@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
@@ -6,6 +8,7 @@ from uuid import UUID, uuid4
 import bcrypt
 import jwt
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.config_manager import settings
@@ -105,21 +108,22 @@ async def authenticate_user(credentials: SignInRequest, session: AsyncSession) -
         raise InvalidCredentialsError()
 
     get_access_token_secret()
-    user = await find_user_by_email(session, str(credentials.email))
-    fallback_password_hash = hash_password(secrets.token_urlsafe(32))
-    matches = verify_password(password, user.hashed_password if user else fallback_password_hash)
+    async with _operation_transaction(session):
+        user = await find_user_by_email(session, str(credentials.email))
+        fallback_password_hash = hash_password(secrets.token_urlsafe(32))
+        matches = verify_password(password, user.hashed_password if user else fallback_password_hash)
 
-    if user is None or not matches:
-        raise InvalidCredentialsError()
+        if user is None or not matches:
+            raise InvalidCredentialsError()
 
-    token = create_access_token(user)
-    claims = verify_access_token(token)
-    await create_authentication_session(
-        session,
-        hash_access_token(token),
-        user.id,
-        datetime.fromtimestamp(claims.exp, timezone.utc),
-    )
+        token = create_access_token(user)
+        claims = verify_access_token(token)
+        await create_authentication_session(
+            session,
+            hash_access_token(token),
+            user.id,
+            datetime.fromtimestamp(claims.exp, timezone.utc),
+        )
     return token
 
 
@@ -148,7 +152,8 @@ async def invalidate_authentication_session(
     token: str,
     session: AsyncSession,
 ) -> None:
-    await delete_authentication_session(session, hash_access_token(token))
+    async with _operation_transaction(session):
+        await delete_authentication_session(session, hash_access_token(token))
 
 
 async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> CurrentUserResponse:
@@ -171,9 +176,10 @@ async def update_user_role(
     request: UpdateUserRoleRequest,
     session: AsyncSession,
 ) -> ManagedUserResponse:
-    user = await update_managed_user_role(session, user_id, request.role)
-    if user is None:
-        raise UserNotFoundError("User not found.")
+    async with _operation_transaction(session):
+        user = await update_managed_user_role(session, user_id, request.role)
+        if user is None:
+            raise UserNotFoundError("User not found.")
     return user
 
 
@@ -182,37 +188,64 @@ async def update_current_user_profile(
     request: UpdateCurrentUserRequest, 
     session: AsyncSession
 ) -> CurrentUserResponse:
-    if request.username is not None:
-        existing_username = await find_user_by_username(session, request.username)
-        if existing_username is not None and existing_username.id != str(user_id):
-            raise UserAlreadyExistsError("Username already exists")
+    try:
+        async with _operation_transaction(session):
+            if request.username is not None:
+                existing_username = await find_user_by_username(session, request.username)
+                if existing_username is not None and existing_username.id != str(user_id):
+                    raise UserAlreadyExistsError("Username already exists")
 
-    if request.email is not None:
-        existing_email = await find_user_by_email(session, str(request.email))
-        if existing_email is not None and existing_email.id != str(user_id):
-            raise UserAlreadyExistsError("Email already exists")
+            if request.email is not None:
+                existing_email = await find_user_by_email(session, str(request.email))
+                if existing_email is not None and existing_email.id != str(user_id):
+                    raise UserAlreadyExistsError("Email already exists")
 
-    profile = await update_user_profile(
-        session=session, 
-        user_id=user_id,
-        username=request.username,
-        email=str(request.email) if request.email is not None else None,
-    )
-    if profile is None:
-        raise jwt.InvalidTokenError("The authenticated user no longer exists.")
+            profile = await update_user_profile(
+                session=session,
+                user_id=user_id,
+                username=request.username,
+                email=str(request.email) if request.email is not None else None,
+            )
+            if profile is None:
+                raise jwt.InvalidTokenError("The authenticated user no longer exists.")
+    except IntegrityError as exc:
+        constraint = getattr(exc.orig.diag, "constraint_name", None)
+        if constraint == "users_username_key" or constraint == "users_email_key":
+            raise UserAlreadyExistsError("Username or Email already exists.") from None
+        raise
     return profile
 
 
 async def register_user(request: SignUpRequest, session: AsyncSession) -> UserRecord:
-    existing_email = await find_user_by_email(session, str(request.email))
-    if existing_email is not None:
-        raise UserAlreadyExistsError("Email already exists")
+    try:
+        async with _operation_transaction(session):
+            existing_email = await find_user_by_email(session, str(request.email))
+            if existing_email is not None:
+                raise UserAlreadyExistsError("Email already exists")
 
-    existing_username = await find_user_by_username(session, request.username)
-    if existing_username is not None:
-        raise UserAlreadyExistsError("Username already exists")
+            existing_username = await find_user_by_username(session, request.username)
+            if existing_username is not None:
+                raise UserAlreadyExistsError("Username already exists")
 
-    hashed_password = hash_password(request.password.get_secret_value())
+            hashed_password = hash_password(request.password.get_secret_value())
+            user = await create_user(
+                session=session, username=request.username,
+                email=str(request.email), hashed_password=hashed_password,
+            )
+    except IntegrityError as exc:
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if constraint in {"users_username_key", "users_email_key", "users_user_email_key"}:
+            raise UserAlreadyExistsError("Username or Email already exists.") from None
+        raise
+    return user
 
-    return await create_user(session=session, username=request.username,
-                              email=str(request.email), hashed_password=hashed_password)
+
+@asynccontextmanager
+async def _operation_transaction(session: AsyncSession) -> AsyncIterator[None]:
+    """Commit or roll back the write operation using SQLAlchemy's automatic transaction."""
+    try:
+        yield
+        await session.commit()
+    except BaseException:
+        await session.rollback()
+        raise

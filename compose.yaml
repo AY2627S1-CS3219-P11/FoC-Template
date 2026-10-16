@@ -1,6 +1,7 @@
 include:
   - path: ./user-service/compose.yaml
   - path: ./supplier-service/compose.yaml
+  - path: ./credit-service/compose.yaml
   - path: ./internal-gateway/compose.yaml
 
 services:
@@ -18,15 +19,20 @@ services:
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: foc-rabbitmq
+    hostname: rabbitmq
     ports:
       - "5672:5672"
       - "15672:15672"
     environment:
       RABBITMQ_DEFAULT_USER: admin
       RABBITMQ_DEFAULT_PASS: admin123
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
     healthcheck:
       test: rabbitmq-diagnostics -q ping
       interval: 10s
       timeout: 5s
       retries: 3
+
+volumes:
+  rabbitmq-data:

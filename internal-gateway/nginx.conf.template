@@ -9,6 +9,7 @@ server {
     resolver_timeout 2s;
     set $user_upstream "${USER_SERVICE_UPSTREAM}";
     set $supplier_upstream "${SUPPLIER_SERVICE_UPSTREAM}";
+    set $credit_upstream "${CREDIT_SERVICE_UPSTREAM}";
 
     proxy_http_version 1.1;
     proxy_set_header Connection "";
@@ -33,6 +34,11 @@ server {
     location /supplier-api/ {
         rewrite ^/supplier-api/(.*)$ /$1 break;
         proxy_pass $supplier_upstream;
+    }
+
+    location /credit-api/ {
+        rewrite ^/credit-api/(.*)$ /$1 break;
+        proxy_pass $credit_upstream;
     }
 
     location / {

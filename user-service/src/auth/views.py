@@ -35,23 +35,31 @@ from auth.models import (
     UserRoleResponse,
 )
 from auth.responses import clear_access_token_cookie, unauthorized_response
+from auth.events import publish_pending_user_events
 
 
 router = APIRouter(prefix="/authentication", tags=["Authentication"])
 
 
 @router.post("/users", status_code=201)
-async def sign_up(credentials: SignUpRequest, session: Annotated[AsyncSession, Depends(get_session)],):
+async def sign_up(credentials: SignUpRequest, request: Request,
+                  session: Annotated[AsyncSession, Depends(get_session)],):
     try:
         user = await register_user(credentials, session)
     except UserAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
+    await publish_pending_user_events(
+        request.app.state.session_factory, request.app.state.user_exchange, user.id,
+    )
     return {"message": "Account created successfully. Please sign in to continue."}
 
 
-@router.post("/sessions", response_model=AuthenticationResponse)
-async def sign_in(credentials: SignInRequest, response: Response, 
-                  session: Annotated[AsyncSession, Depends(get_session)],):
+@router.post("/sessions")
+async def sign_in(
+    credentials: SignInRequest,
+    response: Response,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AuthenticationResponse:
     try:
         token = await authenticate_user(credentials, session)
     except InvalidCredentialsError:
@@ -71,20 +79,23 @@ async def sign_in(credentials: SignInRequest, response: Response,
     return AuthenticationResponse(message="Successfully signed in.")
 
 
-@router.get("/sessions/current", response_model=UserRoleResponse)
-async def verify(user: AuthenticatedUser):
+@router.get("/sessions/current")
+async def verify(user: AuthenticatedUser) -> UserRoleResponse:
     return user
 
 
 @router.get("/users/current", response_model=CurrentUserResponse)
-async def get_current_user(user: AuthenticatedUser, session: Annotated[AsyncSession, Depends(get_session)],):
+async def get_current_user(
+    user: AuthenticatedUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CurrentUserResponse | Response:
     try:
         return await get_current_user_profile(user.user_id, session)
     except InvalidTokenError:
         return unauthorized_response()
 
 
-@router.get("/users", response_model=list[ManagedUserResponse])
+@router.get("/users")
 async def get_users(
     _admin_manager: AdminManagerUser,
     session: Annotated[AsyncSession, Depends(get_session)],
@@ -100,17 +111,17 @@ async def get_users(
             description="Optional case-insensitive username or email search within the selected role.",
         ),
     ] = None,
-):
+) -> list[ManagedUserResponse]:
     return await get_users_for_access_management(role, query, session)
 
 
-@router.patch("/users/{user_id}/role", response_model=ManagedUserResponse)
+@router.patch("/users/{user_id}/role")
 async def change_user_role(
     user_id: UUID,
     update: UpdateUserRoleRequest,
     _admin_manager: AdminManagerUser,
     session: Annotated[AsyncSession, Depends(get_session)],
-):
+) -> ManagedUserResponse:
     try:
         return await update_user_role(user_id, update, session)
     except UserNotFoundError as error:
@@ -118,8 +129,11 @@ async def change_user_role(
 
 
 @router.patch("/users/current", response_model=CurrentUserResponse)
-async def update_current_user(update: UpdateCurrentUserRequest, user: AuthenticatedUser,
-                              session: Annotated[AsyncSession, Depends(get_session)]):
+async def update_current_user(
+    update: UpdateCurrentUserRequest,
+    user: AuthenticatedUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> CurrentUserResponse | Response:
     try:
         return await update_current_user_profile(user.user_id, update, session)
     except UserAlreadyExistsError as error:
