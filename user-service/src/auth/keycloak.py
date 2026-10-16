@@ -93,6 +93,13 @@ class KeycloakAdmin:
             raise AuthenticationUnavailableError("Invalid identity response.")
         return users
 
+    async def accounts(self, *, first: int = 0, max_results: int = 100) -> list[dict]:
+        # Role-member endpoints omit users who inherit roles through composites.
+        users = await self._json("/users", params={"first": first, "max": max_results})
+        if not isinstance(users, list) or any(not isinstance(user, dict) for user in users):
+            raise AuthenticationUnavailableError("Invalid identity response.")
+        return users
+
     async def managed_user(self, user_id: UUID) -> ManagedUserResponse:
         roles = {role["name"] for role in await self.roles(user_id)}
         if "admin_manager" in roles or not roles.intersection({"user", "admin"}):

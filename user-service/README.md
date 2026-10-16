@@ -25,9 +25,10 @@ See the [Keycloak guide](keycloak/README.md) for local infrastructure setup.
   does not accept passwords or proxy profile writes.
 - `GET /authentication/sessions/current` verifies the bearer token locally.
 - `GET /authentication/users/current` reads identity details from Keycloak.
-- `GET /authentication/users` lists a bounded page of role members for managers
-  (`role=user|admin`, `offset`, `limit` up to 100). Filtering by `query` applies
-  within that page; protected managers are omitted.
+- `GET /authentication/users` lists a bounded page of accounts for managers
+  (`role=user|admin`, `offset`, `limit` up to 100). Effective-role and `query`
+  filtering apply within that page, including inherited user roles; protected
+  managers are omitted. Filtered pages can be empty while more accounts remain.
 - `PATCH /authentication/users/{id}/role` permits managers to set only `user` or
   `admin`. Targets with an effective admin-manager role are protected. Other
   realm roles are preserved. Infrastructure/composite roles remain an operator

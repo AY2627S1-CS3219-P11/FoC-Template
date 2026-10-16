@@ -23,6 +23,8 @@ def test_registration_defaults_and_self_service_permissions():
     assert default["composites"] == {"realm": ["user"]}
     profile = json.loads(realm["components"]["org.keycloak.userprofile.UserProfileProvider"]
                          [0]["config"]["kc.user.profile.config"][0])
+    # Omission disables unmanaged attributes; "DISABLED" is not a valid enum.
+    assert "unmanagedAttributePolicy" not in profile
     for attribute in profile["attributes"]:
         assert "user" in attribute["permissions"]["edit"]
     clients = {client["clientId"]: client for client in realm["clients"]}

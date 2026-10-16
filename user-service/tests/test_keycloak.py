@@ -25,7 +25,7 @@ def keycloak(monkeypatch):
 def admin(monkeypatch):
     admin = AsyncMock()
     admin.get_user.return_value = CurrentUserResponse(username="test-user", email="user@example.com")
-    admin.role_members.return_value = []
+    admin.accounts.return_value = []
     monkeypatch.setattr(service, "get_keycloak_admin", lambda: admin)
     monkeypatch.setattr(views, "get_keycloak_admin", lambda: admin)
     return admin
@@ -78,7 +78,7 @@ async def test_admin_manager_boundary(client, keycloak, admin, role, expected):
     response = await client.get("/authentication/users", headers={"Authorization": "Bearer token"})
     assert response.status_code == expected
     if expected == 403:
-        admin.role_members.assert_not_awaited()
+        admin.accounts.assert_not_awaited()
 
 
 @pytest.mark.anyio

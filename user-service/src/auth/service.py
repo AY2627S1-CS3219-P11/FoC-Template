@@ -2,14 +2,14 @@ from uuid import UUID
 
 from auth.exceptions import AuthenticationUnavailableError, UserNotFoundError
 from auth.keycloak import get_keycloak_admin
-from auth.models import ManagedUserPage, ManagedUserRole, UpdateUserRoleRequest
+from auth.models import ManagedUserPage, ManagedUserResponse, ManagedUserRole, UpdateUserRoleRequest
 
 
 async def get_users_for_access_management(
     role: ManagedUserRole, query: str | None, offset: int = 0, limit: int = 100,
 ) -> ManagedUserPage:
     admin = get_keycloak_admin()
-    members = await admin.role_members(role, first=offset, max_results=limit + 1)
+    members = await admin.accounts(first=offset, max_results=limit + 1)
     result = []
     for member in members[:limit]:
         try:

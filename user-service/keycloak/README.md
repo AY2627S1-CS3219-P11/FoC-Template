@@ -73,7 +73,7 @@ Password recovery remains disabled until SMTP is configured.
 ## Checks
 
 ```sh
-uv run --directory user-service --locked python -m pytest -q
+uv run --directory user-service --locked python -m pytest tests keycloak/tests -q
 uv run --directory supplier-service --locked python -m pytest -q
 cd ui
 npm run build

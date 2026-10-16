@@ -119,7 +119,7 @@
         "providerId": "declarative-user-profile",
         "config": {
           "kc.user.profile.config": [
-            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"Username\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"min\":1,\"max\":50}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"Email\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"email\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}}],\"unmanagedAttributePolicy\":\"DISABLED\"}"
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"Username\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"min\":1,\"max\":50}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"Email\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"email\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}}]}"
           ]
         }
       }
