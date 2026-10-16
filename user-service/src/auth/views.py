@@ -1,33 +1,18 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from jwt import InvalidTokenError
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Query
 
-from common.db import get_session
 from auth.dependencies import AdminManagerUser, AuthenticatedUser
-from auth.exceptions import UserAlreadyExistsError, UserNotFoundError
-from auth.service import (
-    get_current_user_profile, get_users_for_access_management, register_user,
-    update_current_user_profile, update_user_role,
-)
+from auth.keycloak import get_keycloak_admin
 from auth.models import (
-    CurrentUserResponse, ManagedUserRole, ManagedUserResponse, SignUpRequest,
-    UpdateCurrentUserRequest, UpdateUserRoleRequest, UserRole, UserRoleResponse,
+    CurrentUserResponse, ManagedUserRole, ManagedUserResponse,
+    UpdateUserRoleRequest, UserRole, UserRoleResponse,
 )
+from auth.service import get_users_for_access_management, update_user_role
 
 
 router = APIRouter(prefix="/authentication", tags=["Authentication"])
-
-
-@router.post("/users", status_code=201)
-async def sign_up(credentials: SignUpRequest, session: Annotated[AsyncSession, Depends(get_session)]):
-    try:
-        await register_user(credentials, session)
-    except UserAlreadyExistsError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from None
-    return {"message": "Account created successfully. Please sign in to continue."}
 
 
 @router.get("/sessions/current", response_model=UserRoleResponse)
@@ -36,42 +21,23 @@ async def verify(user: AuthenticatedUser):
 
 
 @router.get("/users/current", response_model=CurrentUserResponse)
-async def get_current_user(user: AuthenticatedUser, session: Annotated[AsyncSession, Depends(get_session)]):
-    try:
-        return await get_current_user_profile(user.user_id, session)
-    except InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token. Please sign in.") from None
+async def get_current_user(user: AuthenticatedUser):
+    return await get_keycloak_admin().get_user(user.user_id)
 
 
 @router.get("/users", response_model=list[ManagedUserResponse])
 async def get_users(
     _admin_manager: AdminManagerUser,
-    session: Annotated[AsyncSession, Depends(get_session)],
     role: ManagedUserRole = UserRole.ADMIN,
     query: Annotated[str | None, Query(min_length=1, max_length=254)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 100,
 ):
-    return await get_users_for_access_management(role, query, session)
+    return await get_users_for_access_management(role, query, offset, limit)
 
 
 @router.patch("/users/{user_id}/role", response_model=ManagedUserResponse)
 async def change_user_role(
     user_id: UUID, update: UpdateUserRoleRequest, _admin_manager: AdminManagerUser,
-    session: Annotated[AsyncSession, Depends(get_session)],
 ):
-    try:
-        return await update_user_role(user_id, update, session)
-    except UserNotFoundError as error:
-        raise HTTPException(status_code=404, detail=str(error)) from None
-
-
-@router.patch("/users/current", response_model=CurrentUserResponse)
-async def update_current_user(
-    update: UpdateCurrentUserRequest, user: AuthenticatedUser,
-    session: Annotated[AsyncSession, Depends(get_session)],
-):
-    try:
-        return await update_current_user_profile(user.user_id, update, session)
-    except UserAlreadyExistsError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from None
-    except InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token. Please sign in.") from None
+    return await update_user_role(user_id, update)

@@ -1,42 +1,26 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from contextlib import asynccontextmanager
-from sqlalchemy.ext.asyncio import async_sessionmaker
-
-
-from common.db import get_engine
-from common.config_manager import settings
 from auth.bootstrap import provision_admin_manager
-from auth.orm_models import Base
-from auth.models import PASSWORD_REQUIREMENTS_MESSAGE
-from auth.views import router as authentication_router
 from auth.dependencies import get_keycloak_validator
+from auth.exceptions import AuthenticationUnavailableError, UserAlreadyExistsError, UserNotFoundError
 from auth.keycloak import get_keycloak_admin
-from auth.exceptions import AuthenticationUnavailableError, UserNotFoundError
+from auth.views import router as authentication_router
+from common.config_manager import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     get_keycloak_validator()
     get_keycloak_admin()
-    engine = get_engine()
-
-    async with engine.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
-
-    session_factory = async_sessionmaker(engine, expire_on_commit=False,) # creates admin manager
-
-    async with session_factory() as session:
-        await provision_admin_manager(session)
-
+    await provision_admin_manager()
     yield
 
-    await engine.dispose()
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan,)
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
 
 @app.exception_handler(AuthenticationUnavailableError)
@@ -48,31 +32,23 @@ async def authentication_unavailable(_request: Request, _exception: Authenticati
 async def identity_missing(_request: Request, exception: UserNotFoundError):
     return JSONResponse(status_code=404, content={"detail": str(exception)})
 
+
+@app.exception_handler(UserAlreadyExistsError)
+async def identity_conflict(_request: Request, exception: UserAlreadyExistsError):
+    return JSONResponse(status_code=409, content={"detail": str(exception)})
+
+
 @app.get("/health")
 async def health_check():
-    return {
-        "status": "healthy",
-        "service": "user-service",
-    }
-
-@app.exception_handler(RequestValidationError)
-async def invalid_request_handler(request: Request, exception: RequestValidationError):
-    if request.url.path.endswith("/authentication/users") and any(
-        error.get("loc") == ("body", "password") for error in exception.errors()
-    ):
-        return JSONResponse(status_code=422, content={"message": PASSWORD_REQUIREMENTS_MESSAGE})
-    return JSONResponse(status_code=422, content={"message": "Invalid request."})
+    return {"status": "healthy", "service": "user-service"}
 
 
 app.include_router(authentication_router)
 
-# TODO(team): why do we have CORSMiddleware to 5173? 
-# with ui container running on compose; we likely dont need this anymore
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_credentials=False,
+    allow_methods=["GET", "PATCH", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
-

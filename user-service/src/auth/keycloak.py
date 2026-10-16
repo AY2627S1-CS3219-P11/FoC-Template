@@ -1,4 +1,4 @@
-"""Keycloak account administration. Only this service changes identities."""
+"""Identity administration owned by user-service, not used for JWT verification."""
 
 import asyncio
 from functools import lru_cache
@@ -7,8 +7,10 @@ from urllib.parse import quote
 from uuid import UUID
 
 import httpx
+from pydantic import ValidationError
 
 from auth.exceptions import AuthenticationUnavailableError, UserAlreadyExistsError, UserNotFoundError
+from auth.models import CurrentUserResponse, ManagedUserResponse
 from common.config_manager import settings
 
 
@@ -36,22 +38,23 @@ class KeycloakAdmin:
                     })
                 response.raise_for_status()
                 data = response.json()
-                self._access_token = data["access_token"]
+                token = data["access_token"]
+                if not isinstance(token, str) or not token:
+                    raise ValueError("Missing service token")
                 self._expires = monotonic() + max(0, int(data["expires_in"]) - 30)
-                return self._access_token
+                self._access_token = token
+                return token
             except (httpx.HTTPError, ValueError, KeyError, TypeError) as error:
                 raise AuthenticationUnavailableError("Keycloak administration is unavailable.") from error
 
-    async def _request(self, method: str, path: str, *, body=None, missing_ok=False) -> httpx.Response:
+    async def _request(self, method: str, path: str, *, body=None, params=None) -> httpx.Response:
         try:
             token = await self._token()
             async with httpx.AsyncClient(base_url=self.url, timeout=5) as client:
-                response = await client.request(method, f"/admin/realms/{self.realm}{path}", json=body,
-                    headers={"Authorization": f"Bearer {token}"})
+                response = await client.request(method, f"/admin/realms/{self.realm}{path}",
+                    json=body, params=params, headers={"Authorization": f"Bearer {token}"})
             if response.status_code == 404:
-                if missing_ok:
-                    return response
-                raise UserNotFoundError("Keycloak account not found. Import the account before signing in.")
+                raise UserNotFoundError("Account not found.")
             if response.status_code == 409:
                 raise UserAlreadyExistsError("Username or email already exists.")
             response.raise_for_status()
@@ -59,44 +62,85 @@ class KeycloakAdmin:
         except httpx.HTTPError as error:
             raise AuthenticationUnavailableError("Keycloak administration is unavailable.") from error
 
-    async def create_user(self, username: str, email: str, password: str, role: str = "user") -> UUID:
+    async def _json(self, path: str, *, params=None):
+        response = await self._request("GET", path, params=params)
+        try:
+            return response.json()
+        except ValueError as error:
+            raise AuthenticationUnavailableError("Invalid identity response.") from error
+
+    async def get_user(self, user_id: UUID) -> CurrentUserResponse:
+        data = await self._json(f"/users/{user_id}")
+        try:
+            return CurrentUserResponse.model_validate(data)
+        except ValidationError as error:
+            raise AuthenticationUnavailableError("Invalid identity response.") from error
+
+    async def roles(self, user_id: UUID, *, effective: bool = True) -> list[dict]:
+        suffix = "/composite" if effective else ""
+        roles = await self._json(f"/users/{user_id}/role-mappings/realm{suffix}")
+        if not isinstance(roles, list) or any(
+            not isinstance(role, dict) or not isinstance(role.get("name"), str)
+            or not isinstance(role.get("id"), str) for role in roles
+        ):
+            raise AuthenticationUnavailableError("Invalid role response.")
+        return roles
+
+    async def role_members(self, role: str, *, first: int = 0, max_results: int = 100) -> list[dict]:
+        users = await self._json(f"/roles/{quote(role, safe='')}/users",
+            params={"first": first, "max": max_results})
+        if not isinstance(users, list) or any(not isinstance(user, dict) for user in users):
+            raise AuthenticationUnavailableError("Invalid identity response.")
+        return users
+
+    async def managed_user(self, user_id: UUID) -> ManagedUserResponse:
+        roles = {role["name"] for role in await self.roles(user_id)}
+        if "admin_manager" in roles or not roles.intersection({"user", "admin"}):
+            raise UserNotFoundError("Managed user not found.")
+        profile = await self.get_user(user_id)
+        return ManagedUserResponse(user_id=user_id, **profile.model_dump(),
+            role="admin" if "admin" in roles else "user")
+
+    async def set_managed_role(self, user_id: UUID, role: str) -> ManagedUserResponse:
+        if role not in {"user", "admin"}:
+            raise ValueError("Only user and admin roles can be managed")
+        await self.managed_user(user_id)  # Includes inherited manager-role protection.
+        direct = await self.roles(user_id, effective=False)
+        effective = await self.roles(user_id)
+        if role == "user" and any(r["name"] == "admin" for r in effective) and not any(
+            r["name"] == "admin" for r in direct
+        ):
+            raise UserAlreadyExistsError("Inherited administrator access must be changed in Keycloak.")
+        desired = await self._json(f"/roles/{role}")
+        if not isinstance(desired, dict) or desired.get("name") != role or not desired.get("id"):
+            raise AuthenticationUnavailableError("Invalid role response.")
+        path = f"/users/{user_id}/role-mappings/realm"
+        await self._request("POST", path, body=[desired])
+        remove = [r for r in direct if r["name"] in {"user", "admin"} and r["name"] != role]
+        if remove:
+            await self._request("DELETE", path, body=remove)
+        # No forced logout: existing tokens expire within five minutes.
+        user = await self.managed_user(user_id)
+        if user.role != role:
+            raise UserAlreadyExistsError("Inherited administrator access must be changed in Keycloak.")
+        return user
+
+    async def bootstrap_manager(self, username: str, email: str, password: str) -> None:
         response = await self._request("POST", "/users", body={
-            "username": username, "email": email, "enabled": True,
+            "username": username, "email": email, "enabled": False,
             "credentials": [{"type": "password", "value": password, "temporary": False}],
         })
         try:
             user_id = UUID(response.headers["Location"].rstrip("/").rsplit("/", 1)[1])
         except (KeyError, ValueError) as error:
             raise AuthenticationUnavailableError("Invalid account creation response.") from error
-        try:
-            await self.set_role(user_id, role)
-        except Exception:
-            await self.delete_user(user_id)
-            raise
-        return user_id
-
-    async def delete_user(self, user_id: UUID) -> None:
-        await self._request("DELETE", f"/users/{user_id}", missing_ok=True)
-
-    async def update_profile(self, user_id: UUID, username: str, email: str) -> None:
-        await self._request("PUT", f"/users/{user_id}", body={"username": username, "email": email})
-
-    async def set_role(self, user_id: UUID, role: str) -> None:
-        if role not in {"user", "admin", "admin_manager"}:
-            raise ValueError("Unknown application role")
-        current = (await self._request("GET", f"/users/{user_id}/role-mappings/realm")).json()
-        desired = (await self._request("GET", f"/roles/{role}")).json()
+        desired = await self._json("/roles/admin_manager")
+        if not isinstance(desired, dict) or desired.get("name") != "admin_manager" or not desired.get("id"):
+            raise AuthenticationUnavailableError("Invalid bootstrap role response.")
         await self._request("POST", f"/users/{user_id}/role-mappings/realm", body=[desired])
-        remove = [r for r in current if r["name"] in {"user", "admin", "admin_manager"} and r["name"] != role]
-        if remove:
-            await self._request("DELETE", f"/users/{user_id}/role-mappings/realm", body=remove)
-
-    async def logout_user(self, user_id: UUID) -> None:
-        await self._request("POST", f"/users/{user_id}/logout")
-
-    async def logout_session(self, session_id: str) -> None:
-        # Quote identifiers so even a signed claim cannot alter the request path.
-        await self._request("DELETE", f"/sessions/{quote(session_id, safe='')}", missing_ok=True)
+        await self._request("PUT", f"/users/{user_id}", body={"enabled": True})
+        # On failure leave the new account disabled for operator reconciliation.
+        # Never adopt an existing username or delete an identity as compensation.
 
 
 @lru_cache
