@@ -9,7 +9,6 @@ services:
     build:
       context: ./ui
       args:
-        VITE_AUTH_PROVIDER: ${AUTH_PROVIDER:-keycloak}
         VITE_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8080}
         VITE_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-foc}
         VITE_KEYCLOAK_CLIENT_ID: foc-ui

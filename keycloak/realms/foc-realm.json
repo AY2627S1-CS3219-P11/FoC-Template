@@ -4,13 +4,20 @@
   "loginTheme": "campus-errands",
   "enabled": true,
   "sslRequired": "external",
-  "registrationAllowed": false,
+  "registrationAllowed": true,
+  "defaultRole": {"name": "default-roles-foc"},
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": false,
   "accessTokenLifespan": 300,
   "roles": {
     "realm": [
+      {
+        "name": "default-roles-foc",
+        "description": "Default application access",
+        "composite": true,
+        "composites": {"realm": ["user"]}
+      },
       {
         "name": "user",
         "description": "Regular FoC user"
@@ -112,7 +119,7 @@
         "providerId": "declarative-user-profile",
         "config": {
           "kc.user.profile.config": [
-            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"Username\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"min\":1,\"max\":50}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"email\",\"displayName\":\"Email\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"email\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]}},{\"name\":\"firstName\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]}},{\"name\":\"lastName\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]}}],\"unmanagedAttributePolicy\":null}"
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"Username\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"length\":{\"min\":1,\"max\":50}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}},{\"name\":\"email\",\"displayName\":\"Email\",\"required\":{\"roles\":[\"user\",\"admin\"]},\"validations\":{\"email\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\",\"user\"]}}],\"unmanagedAttributePolicy\":\"DISABLED\"}"
           ]
         }
       }

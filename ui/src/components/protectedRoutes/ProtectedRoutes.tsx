@@ -18,7 +18,7 @@ const ProtectedRoutes = () => {
   useEffect(() => {
     const verify = async () => {
       try {
-        const currentSession = await api.user.authentication.verify({ onUnauthenticated: () => {} })
+        const currentSession = await api.user.authentication.verify()
         setSession(currentSession)
         setStatus('authenticated')
       } catch (error) {

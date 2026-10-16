@@ -2,26 +2,23 @@ import Keycloak from 'keycloak-js'
 import type { CurrentSession, UserRole } from '../components/user/models'
 import { CampusErrandsAPIError } from '../api/models'
 
-export const usesKeycloak = import.meta.env.VITE_AUTH_PROVIDER === 'keycloak'
-
-const keycloak = usesKeycloak ? new Keycloak({
+const keycloak = new Keycloak({
   url: import.meta.env.VITE_KEYCLOAK_URL,
   realm: import.meta.env.VITE_KEYCLOAK_REALM,
   clientId: import.meta.env.VITE_KEYCLOAK_CLIENT_ID,
-}) : null
+})
 
 let initialization: Promise<boolean> | undefined
 const loginRequiredKey = 'campus-errands-login-required'
 
 export const clearAuthentication = (): void => {
-  keycloak?.clearToken()
+  keycloak.clearToken()
   // Persist only this flag, never tokens. Do not automatically reacquire a
   // rejected session through SSO and redirect back to the protected route.
   window.sessionStorage.setItem(loginRequiredKey, 'true')
 }
 
 export const initializeAuthentication = async (): Promise<boolean> => {
-  if (!keycloak) return false
   initialization ??= keycloak.init({
     onLoad: window.sessionStorage.getItem(loginRequiredKey) ? undefined : 'check-sso',
     pkceMethod: 'S256', checkLoginIframe: false,
@@ -33,7 +30,7 @@ export const initializeAuthentication = async (): Promise<boolean> => {
 
 export const accessToken = async (): Promise<string> => {
   await initializeAuthentication()
-  if (!keycloak?.authenticated) throw new CampusErrandsAPIError('Please sign in.', 401)
+  if (!keycloak.authenticated) throw new CampusErrandsAPIError('Please sign in.', 401)
   try {
     await keycloak.updateToken(30)
   } catch {
@@ -46,7 +43,7 @@ export const accessToken = async (): Promise<string> => {
 
 export const currentSession = async (): Promise<CurrentSession> => {
   await accessToken()
-  const claims = keycloak!.tokenParsed
+  const claims = keycloak.tokenParsed
   const roles = claims?.realm_access?.roles ?? []
   const role = (['admin_manager', 'admin', 'user'] as UserRole[]).find((candidate) => roles.includes(candidate))
   if (!claims?.sub || !role) throw new CampusErrandsAPIError('Your account has no application access.', 403)
@@ -58,10 +55,21 @@ export const login = async (returnTo = '/home'): Promise<void> => {
   const target = new URL(returnTo, window.location.origin)
   if (target.origin !== window.location.origin) throw new Error('Invalid return URL')
   window.sessionStorage.removeItem(loginRequiredKey)
-  await keycloak!.login({ redirectUri: target.href })
+  await keycloak.login({ redirectUri: target.href })
+}
+
+export const register = async (): Promise<void> => {
+  await initializeAuthentication()
+  window.sessionStorage.removeItem(loginRequiredKey)
+  await keycloak.register({ redirectUri: `${window.location.origin}/home` })
+}
+
+export const manageAccount = async (): Promise<void> => {
+  await accessToken()
+  window.location.assign(keycloak.createAccountUrl({ redirectUri: `${window.location.origin}/profile` }))
 }
 
 export const logout = async (): Promise<void> => {
   await initializeAuthentication()
-  await keycloak!.logout({ redirectUri: `${window.location.origin}/` })
+  await keycloak.logout({ redirectUri: `${window.location.origin}/` })
 }

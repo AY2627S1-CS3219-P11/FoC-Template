@@ -1,56 +1,30 @@
 import { useMemo } from 'react'
-import { currentSession, logout, usesKeycloak } from '../auth/keycloak'
+import { currentSession, logout } from '../auth/keycloak'
 import { makeAuthenticatedCampusErrandsAPIRequest, makeCampusErrandsAPIRequest } from './api'
 import type { AuthenticatedRequestOptions } from './api'
 import { endpointConfig } from './endpointConfig'
-import type {
-  SignInRequest,
-  SignInResponse,
-  SignOutResponse,
-  SignUpRequest,
-  SignUpResponse,
-} from '../pages/authentication/models'
 import type {
   Supplier,
   SupplierCreateRequest,
   SupplierUpdateRequest,
 } from '../pages/suppliers/models'
-import type { CurrentSession, CurrentUserProfile } from '../components/user/models'
+import type { CurrentUserProfile } from '../components/user/models'
 import type {
   ListManagedUsersRequest,
   ManagedUser,
   UpdateManagedUserRoleRequest,
 } from '../pages/adminManagerPortal/models'
-import type { UpdateCurrentUserProfileRequest } from '../pages/profile/models'
 
 export const useCampusErrandsAPI = () => useMemo(() => ({
   request: makeCampusErrandsAPIRequest,
   authenticatedRequest: makeAuthenticatedCampusErrandsAPIRequest,
   user: {
     authentication: {
-      signIn: (request: SignInRequest) =>
-        makeCampusErrandsAPIRequest<SignInRequest, SignInResponse>(
-          request, endpointConfig.user.authentication.signIn,
-        ),
-      signUp: (request: SignUpRequest) =>
-        makeCampusErrandsAPIRequest<SignUpRequest, SignUpResponse>(
-          request, endpointConfig.user.authentication.signUp,
-        ),
-      verify: (options?: AuthenticatedRequestOptions) =>
-        usesKeycloak ? currentSession() : makeAuthenticatedCampusErrandsAPIRequest<null, CurrentSession>(
-          null, endpointConfig.user.authentication.verify, options,
-        ),
-      signOut: () =>
-        usesKeycloak ? logout() : makeCampusErrandsAPIRequest<null, SignOutResponse>(
-          null, endpointConfig.user.authentication.signOut,
-        ),
+      verify: currentSession,
+      signOut: logout,
       getCurrentUser: (options?: AuthenticatedRequestOptions) =>
         makeAuthenticatedCampusErrandsAPIRequest<null, CurrentUserProfile>(
           null, endpointConfig.user.authentication.getCurrentUser, options,
-        ),
-      updateCurrentUser: (request: UpdateCurrentUserProfileRequest) =>
-        makeAuthenticatedCampusErrandsAPIRequest<UpdateCurrentUserProfileRequest, CurrentUserProfile>(
-          request, endpointConfig.user.authentication.updateCurrentUser,
         ),
       listManagedUsers: (request: ListManagedUsersRequest) =>
         makeAuthenticatedCampusErrandsAPIRequest<ListManagedUsersRequest, ManagedUser[]>(

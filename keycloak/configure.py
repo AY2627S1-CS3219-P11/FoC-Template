@@ -57,12 +57,17 @@ def configure(url: str, values: dict):
         request("POST", "/admin/realms", template, admin)
     else:
         request("PUT", root, {"editUsernameAllowed": True,
+            "registrationAllowed": template["registrationAllowed"],
+            "defaultRole": template["defaultRole"],
             "accessTokenLifespan": template["accessTokenLifespan"],
             "passwordPolicy": template["passwordPolicy"],
             "loginTheme": template["loginTheme"]}, admin)
         for role in template["roles"]["realm"]:
             if request("GET", root + f"/roles/{role['name']}", token=admin, missing_ok=True) is None:
                 request("POST", root + "/roles", role, admin)
+        default_role = template["defaultRole"]["name"]
+        user_role = request("GET", root + "/roles/user", token=admin)
+        request("POST", root + f"/roles/{default_role}/composites", [user_role], admin)
         for client in template["clients"]:
             # Explicitly reset any old client-specific access-token lifetime.
             client.setdefault("attributes", {})["access.token.lifespan"] = ""

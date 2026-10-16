@@ -1,7 +1,7 @@
 import type { APIRequest, APIService, EndpointConfigEntry } from './models';
 import { CampusErrandsAPIError } from './models';
 import { routes } from '../routes';
-import { accessToken, clearAuthentication, usesKeycloak } from '../auth/keycloak';
+import { accessToken, clearAuthentication } from '../auth/keycloak';
 
 const apiUrls: Record<APIService, string> = {
     supplier: import.meta.env.VITE_SUPPLIER_API_URL || '/supplier-api',
@@ -59,7 +59,7 @@ const buildRequest = (request: APIRequest, config: EndpointConfigEntry): Request
     }
 
     const headers: Record<string, string> = {};
-    const init: RequestInit = { method: config.verb, credentials: 'include', headers };
+    const init: RequestInit = { method: config.verb, credentials: 'omit', headers };
     if (config.keepalive) {
         init.keepalive = true;
     }
@@ -149,13 +149,11 @@ export const makeAuthenticatedCampusErrandsAPIRequest = async <TRequest extends 
 ): Promise<TResponse> => {
     try {
         const details = buildRequest(request, config);
-        if (usesKeycloak) {
-            (details.init.headers as Record<string, string>)['Authorization'] = `Bearer ${await accessToken()}`;
-        }
+        (details.init.headers as Record<string, string>)['Authorization'] = `Bearer ${await accessToken()}`;
         return await sendRequest<TResponse>(details);
     } catch (error) {
         if (error instanceof CampusErrandsAPIError && error.status === 401) {
-            if (usesKeycloak) clearAuthentication();
+            clearAuthentication();
             (options.onUnauthenticated ?? redirectToSignIn)();
         }
         throw error;

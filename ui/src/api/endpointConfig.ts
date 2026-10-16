@@ -3,12 +3,7 @@ import type { EndpointConfigEntry } from './models'
 export const endpointConfig = {
   user: {
     authentication: {
-      signIn: { service: 'user', url: '/authentication/sessions', verb: 'POST' },
-      signUp: { service: 'user', url: '/authentication/users', verb: 'POST' },
-      verify: { service: 'user', url: '/authentication/sessions/current', verb: 'GET' },
-      signOut: { service: 'user', url: '/authentication/sessions/current', verb: 'DELETE' },
       getCurrentUser: { service: 'user', url: '/authentication/users/current', verb: 'GET' },
-      updateCurrentUser: { service: 'user', url: '/authentication/users/current', verb: 'PATCH' },
       listManagedUsers: {
         service: 'user',
         url: '/authentication/users',
