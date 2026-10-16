@@ -40,10 +40,9 @@ def configure(url: str, values: dict):
 
     secrets = {
         "foc-backend": values.get("KEYCLOAK_BACKEND_CLIENT_SECRET"),
-        "foc-api": values.get("KEYCLOAK_API_CLIENT_SECRET"),
     }
     if not all(secrets.values()):
-        raise ValueError("KEYCLOAK_BACKEND_CLIENT_SECRET and KEYCLOAK_API_CLIENT_SECRET must be set")
+        raise ValueError("KEYCLOAK_BACKEND_CLIENT_SECRET must be set")
     admin = request("POST", "/realms/master/protocol/openid-connect/token", urlencode({
         "grant_type": "password", "client_id": "admin-cli",
         "username": values["KEYCLOAK_ADMIN_USERNAME"], "password": values["KEYCLOAK_ADMIN_PASSWORD"],
@@ -58,12 +57,15 @@ def configure(url: str, values: dict):
         request("POST", "/admin/realms", template, admin)
     else:
         request("PUT", root, {"editUsernameAllowed": True,
+            "accessTokenLifespan": template["accessTokenLifespan"],
             "passwordPolicy": template["passwordPolicy"],
             "loginTheme": template["loginTheme"]}, admin)
         for role in template["roles"]["realm"]:
             if request("GET", root + f"/roles/{role['name']}", token=admin, missing_ok=True) is None:
                 request("POST", root + "/roles", role, admin)
         for client in template["clients"]:
+            # Explicitly reset any old client-specific access-token lifetime.
+            client.setdefault("attributes", {})["access.token.lifespan"] = ""
             found = request("GET", root + "/clients?" + urlencode({"clientId": client["clientId"]}), token=admin)
             if found:
                 request("PUT", root + f"/clients/{found[0]['id']}", client, admin)

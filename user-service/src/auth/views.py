@@ -10,7 +10,7 @@ from auth.dependencies import AdminManagerUser, AuthenticatedUser, bearer_scheme
 from auth.dependencies import get_keycloak_validator
 from auth.keycloak import get_keycloak_admin
 from starlette.concurrency import run_in_threadpool
-from foc_auth import AuthenticationUnavailableError as KeycloakUnavailableError, ApplicationRoleRequiredError
+from auth.tokens import AuthenticationUnavailableError as KeycloakUnavailableError, ApplicationRoleRequiredError
 from auth.exceptions import (
     AuthenticationUnavailableError,
     InvalidCredentialsError,

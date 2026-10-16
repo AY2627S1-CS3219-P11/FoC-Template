@@ -40,7 +40,6 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 ├── credit-service/
 ├── internal-gateway/
 ├── keycloak/
-├── packages/foc-auth/
 ├── <n2h-service>/
 └── README.md
 ```

@@ -12,8 +12,6 @@ services:
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-foc-api}
       KEYCLOAK_SERVER_URL: ${KEYCLOAK_SERVER_URL:-http://keycloak:8080}
       KEYCLOAK_REALM: ${KEYCLOAK_REALM:-foc}
-      KEYCLOAK_API_CLIENT_ID: foc-api
-      KEYCLOAK_API_CLIENT_SECRET: ${KEYCLOAK_API_CLIENT_SECRET:?Set KEYCLOAK_API_CLIENT_SECRET in the root .env}
       KEYCLOAK_JWKS_URL: ${KEYCLOAK_JWKS_URL:-http://keycloak:8080/realms/foc/protocol/openid-connect/certs}
       RABBITMQ_URL: ${RABBITMQ_URL:-amqp://admin:admin123@rabbitmq:5672}
     ports:

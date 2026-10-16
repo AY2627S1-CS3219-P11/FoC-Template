@@ -9,7 +9,7 @@ from uuid import UUID
 import httpx
 from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from foc_auth import (
+from auth.tokens import (
     ApplicationRoleRequiredError,
     AuthenticationUnavailableError,
     KeycloakTokenValidator,
@@ -47,9 +47,6 @@ def get_keycloak_validator() -> KeycloakTokenValidator:
         os.environ.get("KEYCLOAK_ISSUER", ""),
         os.environ.get("KEYCLOAK_AUDIENCE", ""),
         os.environ.get("KEYCLOAK_JWKS_URL") or None,
-        introspection_url=f"{os.environ.get('KEYCLOAK_SERVER_URL', 'http://localhost:8080').rstrip('/')}/realms/{os.environ.get('KEYCLOAK_REALM', 'foc')}/protocol/openid-connect/token/introspect",
-        client_id=os.environ.get("KEYCLOAK_API_CLIENT_ID", "foc-api"),
-        client_secret=os.environ.get("KEYCLOAK_API_CLIENT_SECRET"),
     )
 
 

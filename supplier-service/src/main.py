@@ -15,7 +15,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from foc_auth import auth_provider
+from auth.tokens import auth_provider
 from auth.dependencies import (
     AuthenticatedUser, get_user, get_internal_gateway_url,
     get_internal_gateway_client, get_keycloak_validator,

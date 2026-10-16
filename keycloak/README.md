@@ -4,10 +4,14 @@ The UI signs in through Keycloak using authorization code flow with S256 PKCE.
 Access and refresh tokens stay in memory. Before authenticated API calls, the UI
 refreshes its access token and sends it as an Authorization bearer token through
 the routing gateway. Both backends independently validate the signature,
-issuer, audience, expiry, UUID subject and application role. They also check the
-Keycloak session through token introspection so logout and role changes revoke
-existing access immediately. Supplier-service never calls user-service to
-verify a Keycloak token. A Keycloak outage returns 503 for protected requests.
+issuer, audience, expiry, UUID subject and application role using service-local
+adapters and cached JWKS. They do not introspect tokens or call user-service for
+verification. Already-issued access tokens remain usable until expiry after
+logout or demotion: the realm sets `accessTokenLifespan` to 300 seconds, with no
+client overrides or validation clock leeway. Keep deployment clocks synchronized.
+The configuration script reapplies this lifetime and clears client overrides;
+check these settings when changing the realm. Cached keys allow verification
+during Keycloak outages; failed signing-key retrieval returns 503.
 
 User-service owns application account creation and profile/role edits, calling
 Keycloak administration to keep both stores in sync. New accounts use the same
@@ -20,8 +24,8 @@ The gateway forwards Authorization headers and continues to handle routing.
 Start Docker Desktop. Copy the root `.env.example` and both backend examples to
 `.env` if needed; preserve existing database and bootstrap account values.
 Set `KEYCLOAK_DB_PASSWORD`, `KEYCLOAK_ADMIN_PASSWORD` and
-`KEYCLOAK_BACKEND_CLIENT_SECRET` and `KEYCLOAK_API_CLIENT_SECRET` to separate local secrets in the root `.env`.
-Never put either client secret in a UI `VITE_*` variable. Configure the
+`KEYCLOAK_BACKEND_CLIENT_SECRET` to separate local secrets in the root `.env`.
+Never put the administration client secret in a UI `VITE_*` variable. Configure the
 application databases in their existing service environment files.
 
 To start identity infrastructure independently from the repository root:
@@ -54,8 +58,8 @@ docker compose up -d --build
 Open <http://localhost:4173>. Host-run UI development uses `ui/.env.local`,
 including `VITE_AUTH_PROVIDER=keycloak`, and needs a reachable internal gateway.
 Host-run backends use `KEYCLOAK_SERVER_URL=http://localhost:8080` and the public
-JWKS URL; copy the API client secret into both backend environment files and the
-administration client secret into user-service only.
+JWKS URL; copy the administration client secret into user-service only.
+Token verification requires no API client credentials.
 Docker backends use `http://keycloak:8080` internally but validate the public
 issuer `http://localhost:8080/realms/foc`. If changing Keycloak's port, update
 `KEYCLOAK_PUBLIC_URL`, `KEYCLOAK_ISSUER` and host-run settings to match, then
@@ -119,7 +123,7 @@ legacy password and cannot use that login.
 | --- | --- |
 | Realm | `foc` |
 | Browser client | Public `foc-ui`, authorization code and S256 PKCE |
-| API audience / introspection client | Confidential `foc-api`, with no service account or administration roles |
+| API audience | Bearer-only `foc-api`, no credentials or administration roles |
 | Backend client | Confidential `foc-backend`, service account for user administration, available to user-service only |
 | Application roles | `user`, `admin`, `admin_manager` |
 | UI origins | `localhost` and `127.0.0.1`, ports 4173 and 5173 |
@@ -142,7 +146,6 @@ production startup settings and a persistent identity database.
 ```sh
 uv run --directory user-service --locked pytest -q
 uv run --directory supplier-service --locked pytest -q
-uv run --directory supplier-service --locked pytest ../packages/foc-auth/tests -q
 cd ui
 npm run build
 npm run lint
@@ -152,7 +155,7 @@ Swagger accepts a Keycloak **access token** using Authorize at
 <http://127.0.0.1:5005/docs> and <http://127.0.0.1:3001/docs>. User-service requires
 the signed subject to exist in its application database; supplier audit fields
 use that subject UUID. Supplier listing remains public; writes require `admin`
-or `admin_manager`. Invalid/inactive tokens return 401, insufficient roles 403,
+or `admin_manager`. Invalid/expired tokens return 401, insufficient roles 403,
 and unavailable identity verification 503. Legacy tokens are rejected in
 Keycloak mode without falling back to user-service.
 

@@ -6,7 +6,6 @@ WORKDIR /app
 
 # Install dependencies as per uv.lock
 COPY supplier-service/pyproject.toml supplier-service/uv.lock ./
-COPY packages/foc-auth /packages/foc-auth
 
 RUN uv sync --locked --no-dev --no-install-project
 

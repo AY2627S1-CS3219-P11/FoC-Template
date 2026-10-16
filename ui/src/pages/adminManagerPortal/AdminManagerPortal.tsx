@@ -192,7 +192,7 @@ const AdminManagerPortal = () => {
           )}
         </section>
       </main>
-      <footer className={styles.footer}>Administrator access changes take effect immediately.</footer>
+      <footer className={styles.footer}>Administrator access changes can take up to five minutes to take effect.</footer>
     </div>
   )
 }

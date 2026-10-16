@@ -2,7 +2,7 @@ from unittest.mock import Mock
 from uuid import UUID
 
 import pytest
-from foc_auth import ApplicationRoleRequiredError, AuthenticationUnavailableError, Identity
+from auth.tokens import ApplicationRoleRequiredError, AuthenticationUnavailableError, Identity
 from jwt import InvalidTokenError
 from sqlalchemy import select
 

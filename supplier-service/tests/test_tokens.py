@@ -10,7 +10,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 from jwt.algorithms import RSAAlgorithm
 
-from foc_auth import (
+from auth.tokens import (
     ApplicationRoleRequiredError,
     AuthenticationUnavailableError,
     KeycloakTokenValidator,
@@ -31,13 +31,6 @@ def server(keys):
     state = {"requests": 0, "index": 0, "status": 200, "malformed": False}
 
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self):
-            from urllib.parse import parse_qs
-            state["introspection"] = parse_qs(self.rfile.read(int(self.headers["Content-Length"])).decode())
-            self.send_response(state.get("session_status", 200))
-            self.end_headers()
-            self.wfile.write(json.dumps(state.get("session", {"active": True})).encode())
-
         def do_GET(self):
             state["requests"] += 1
             self.send_response(state["status"])
@@ -175,36 +168,32 @@ def test_builtin_roles_do_not_grant_application_access(server, keys):
         validator.validate(token(keys, realm_access={"roles": ["offline_access", "uma_authorization"]}))
 
 
-@pytest.mark.parametrize("response,expected", [
-    ({"active": True}, None), ({"active": False}, jwt.InvalidTokenError),
-    ({"active": "true"}, AuthenticationUnavailableError), ({}, AuthenticationUnavailableError),
-])
-def test_session_checks_reject_revoked_tokens_and_malformed_responses(server, keys, response, expected):
-    base, state = server
-    state["session"] = response
-    validator = KeycloakTokenValidator(ISSUER, "foc-api", base.jwks_url,
-        introspection_url=base.jwks_url.replace("/certs", "/introspect"),
-        client_id="foc-backend", client_secret="server-secret")
-    signed = token(keys, sid="session-id")
-    if expected:
-        with pytest.raises(expected):
-            validator.validate(signed)
-    else:
-        assert validator.validate(signed).session_id == "session-id"
-    assert state["introspection"]["token"] == [signed]
-    assert state["introspection"]["client_id"] == ["foc-backend"]
+def test_cached_keys_allow_validation_during_identity_server_outage(server, keys):
+    validator, state = server
+    signed = token(keys, sid="ended-session")
+    validator.validate(signed)
+    state["status"] = 503
+    assert validator.validate(signed).session_id == "ended-session"
+    assert state["requests"] == 1
 
 
-def test_session_check_outage_fails_closed(server, keys):
-    base, state = server
-    state["session_status"] = 503
-    validator = KeycloakTokenValidator(ISSUER, "foc-api", base.jwks_url,
-        introspection_url=base.jwks_url.replace("/certs", "/introspect"),
-        client_id="foc-backend", client_secret="server-secret")
-    with pytest.raises(AuthenticationUnavailableError):
-        validator.validate(token(keys))
+def test_access_token_expires_at_five_minute_boundary(server, keys, monkeypatch):
+    from datetime import datetime, timezone
+    import jwt.api_jwt
 
+    validator, state = server
+    issued_at = int(time())
+    signed = token(keys, iat=issued_at, exp=issued_at + 300)
+    clock = {"now": issued_at + 299}
 
-def test_session_check_requires_backend_credentials():
-    with pytest.raises(ValueError):
-        KeycloakTokenValidator(ISSUER, "foc-api", introspection_url=ISSUER + "/introspect")
+    class Clock:
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromtimestamp(clock["now"], tz=timezone.utc)
+
+    monkeypatch.setattr(jwt.api_jwt, "datetime", Clock)
+    assert validator.validate(signed).role == "user"
+    clock["now"] = issued_at + 300
+    with pytest.raises(jwt.ExpiredSignatureError):
+        validator.validate(signed)
+    assert state["requests"] == 1

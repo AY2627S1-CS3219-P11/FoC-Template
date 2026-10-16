@@ -7,7 +7,7 @@ from auth import service, views
 from auth.exceptions import AuthenticationUnavailableError, UserAlreadyExistsError
 from auth.models import UserRecord, UserRole
 from auth.export_keycloak_users import build_import
-from foc_auth import Identity
+from auth.tokens import Identity
 
 from test_keycloak import SUBJECT, keycloak
 

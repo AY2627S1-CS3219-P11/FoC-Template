@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, Mock
 from uuid import UUID
 
 import pytest
-from foc_auth import ApplicationRoleRequiredError, AuthenticationUnavailableError, Identity
+from auth.tokens import ApplicationRoleRequiredError, AuthenticationUnavailableError, Identity
 from jwt import InvalidTokenError
 
 from auth import dependencies, service

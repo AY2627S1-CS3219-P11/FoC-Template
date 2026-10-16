@@ -25,17 +25,18 @@ Open <http://127.0.0.1:5005/docs>.
 
 ## Authentication
 
-`AUTH_PROVIDER=keycloak` uses the shared
-[`foc-auth`](../packages/foc-auth/README.md) package to validate access tokens
-and check active Keycloak sessions. Configure issuer, audience, JWKS URL,
-Keycloak server URL, realm and separate API and administration client credentials as shown
-in `.env.example`. Root Compose supplies Docker addresses and the root secret;
-host-run services need `localhost` addresses and the same client secrets in their `.env`.
+`AUTH_PROVIDER=keycloak` uses the service-local `auth/tokens.py` adapter to
+validate access tokens using cached JWKS, without introspection. Configure issuer,
+audience, JWKS URL, Keycloak server URL, realm and administration credentials as
+shown in `.env.example`. Root Compose supplies Docker addresses and the
+administration secret; host-run services need `localhost` addresses.
 See the [Keycloak guide](../keycloak/README.md) for setup and existing-account import.
 
 Signup provisions a Keycloak account and stores its UUID in PostgreSQL. Profile
 and role edits synchronize both stores. Role edits revoke existing sessions;
-logout revokes the presented session. Keycloak owns credentials and browser
+logout revokes the presented session. Already-issued access tokens remain usable
+until expiry (up to five minutes), including after logout or demotion; validation
+uses no clock leeway. Keycloak owns credentials and browser
 login, so the legacy password-login endpoint returns 409 in this mode.
 `AUTH_PROVIDER=legacy` retains the previous cookie/session flow. Switch the UI
 and both backends together after importing existing users with preserved UUIDs.

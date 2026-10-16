@@ -20,8 +20,6 @@ class Settings(BaseSettings):
     keycloak_realm: str = "foc"
     keycloak_backend_client_id: str = "foc-backend"
     keycloak_backend_client_secret: SecretStr | None = None
-    keycloak_api_client_id: str = "foc-api"
-    keycloak_api_client_secret: SecretStr | None = None
     access_token_duration_seconds: int = 6 * 60 * 60
     cookie_secure: bool = False
     cookie_samesite: Literal["lax", "strict", "none"] = "lax"

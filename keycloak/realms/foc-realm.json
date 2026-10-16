@@ -70,13 +70,12 @@
       "name": "FoC backend APIs",
       "enabled": true,
       "protocol": "openid-connect",
-      "bearerOnly": false,
+      "bearerOnly": true,
       "standardFlowEnabled": false,
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "publicClient": false,
-      "secret": "${KEYCLOAK_API_CLIENT_SECRET}"
+      "publicClient": false
     },
     {
       "clientId": "foc-backend",
