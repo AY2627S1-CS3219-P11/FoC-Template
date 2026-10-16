@@ -40,20 +40,6 @@ class SignUpRequest(BaseModel):
         return value
 
 
-class SignInRequest(BaseModel):
-    email: EmailStr
-    password: SecretStr = Field(min_length=1)
-
-    @field_validator("email", mode="before")
-    @classmethod
-    def normalize_email(cls, value: object) -> object:
-        return value.strip().lower() if isinstance(value, str) else value
-
-
-class AuthenticationResponse(BaseModel):
-    message: str
-
-
 class UserRecord(BaseModel):
     id: UUID
     username: str = Field(min_length=1)
@@ -105,12 +91,3 @@ class UpdateCurrentUserRequest(BaseModel):
         if self.username is None and self.email is None:
             raise ValueError("Provide a username or email to update.")
         return self
-
-
-class AccessTokenClaims(BaseModel):
-    sub: UUID
-    email: EmailStr
-    tokenType: Literal["access"]
-    iat: int = Field(strict=True)
-    exp: int = Field(strict=True)
-    jti: UUID

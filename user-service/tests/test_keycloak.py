@@ -14,12 +14,9 @@ SUBJECT = UUID("a0000000-0000-0000-0000-000000000007")
 
 @pytest.fixture
 def keycloak(monkeypatch):
-    monkeypatch.setattr(settings, "auth_provider", "keycloak")
     validator = Mock()
     validator.validate.return_value = Identity(user_id=SUBJECT, role="user")
     monkeypatch.setattr(dependencies, "get_keycloak_validator", lambda: validator)
-    monkeypatch.setattr(dependencies, "verify_access_token", lambda *_a: pytest.fail("Legacy verification used"))
-    monkeypatch.setattr(dependencies, "get_authenticated_user_role", lambda *_a: pytest.fail("Legacy session queried"))
     monkeypatch.setattr(service, "get_keycloak_admin", lambda: AsyncMock())
     return validator
 

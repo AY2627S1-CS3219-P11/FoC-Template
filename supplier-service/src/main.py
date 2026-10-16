@@ -15,11 +15,7 @@ from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
-from auth.tokens import auth_provider
-from auth.dependencies import (
-    AuthenticatedUser, get_user, get_internal_gateway_url,
-    get_internal_gateway_client, get_keycloak_validator,
-)
+from auth.dependencies import AuthenticatedUser, get_user, get_keycloak_validator
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -163,10 +159,7 @@ async def seed_database_from_csv(engine: AsyncEngine, csv_path: Path) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Validate required destinations before connecting to external dependencies.
-    if auth_provider(os.environ.get("AUTH_PROVIDER", "legacy")) == "keycloak":
-        get_keycloak_validator()
-    else:
-        get_internal_gateway_url()
+    get_keycloak_validator()
     rabbitmq_url = get_required_env("RABBITMQ_URL")
     csv_path = (
         Path(__file__).resolve().parent.parent

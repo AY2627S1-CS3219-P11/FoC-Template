@@ -20,9 +20,8 @@ from auth.exceptions import AuthenticationUnavailableError, UserNotFoundError
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if settings.auth_provider == "keycloak":
-        get_keycloak_validator()
-        get_keycloak_admin()
+    get_keycloak_validator()
+    get_keycloak_admin()
     engine = get_engine()
 
     async with engine.begin() as connection:

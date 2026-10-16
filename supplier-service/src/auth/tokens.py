@@ -26,12 +26,6 @@ class Identity:
     session_id: str | None = None
 
 
-def auth_provider(value: str) -> str:
-    if value not in {"legacy", "keycloak"}:
-        raise ValueError("AUTH_PROVIDER must be legacy or keycloak")
-    return value
-
-
 def _http_url(value: str, setting: str) -> str:
     url = urlsplit(value)
     if (
