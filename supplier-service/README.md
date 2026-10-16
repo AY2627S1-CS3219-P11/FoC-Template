@@ -22,7 +22,7 @@ Supplier-service needs no Keycloak client secrets.
 Protected requests validate signed access tokens through the service-local
 `auth/tokens.py` adapter using cached JWKS, without introspection. They never call user-service or the gateway for verification,
 and never fall back to another authentication mechanism on errors. See the
-[Keycloak guide](../keycloak/README.md) for setup.
+[Keycloak guide](../user-service/keycloak/README.md) for setup.
 
 Swagger at <http://127.0.0.1:3001/docs> accepts Keycloak access tokens through
 Authorize. Invalid/expired tokens return 401, missing permissions return 403,

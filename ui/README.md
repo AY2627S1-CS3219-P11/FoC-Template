@@ -76,4 +76,4 @@ supplier management remain application features. Logout ends the Keycloak sessio
 Backend services verify permissions independently; already-issued access tokens
 remain usable until expiry, up to five minutes after logout or demotion.
 
-See the [Keycloak guide](../keycloak/README.md) for identity setup.
+See the [Keycloak guide](../user-service/keycloak/README.md) for identity setup.

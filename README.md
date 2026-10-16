@@ -24,7 +24,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 ## Repository Structure
 
-Local identity infrastructure lives in [`keycloak/`](keycloak/README.md), with
+Local identity infrastructure lives in [`user-service/keycloak/`](user-service/keycloak/README.md), with
 its own PostgreSQL database and realm import. See that guide to start it without
 the application stack. See the service guides for backend authentication settings.
 
@@ -35,11 +35,11 @@ microservice (`user-service/`, `supplier-service/`, `order-service/`,
 ```text
 .
 ├── user-service/
+│   └── keycloak/
 ├── supplier-service/
 ├── order-service/
 ├── credit-service/
 ├── internal-gateway/
-├── keycloak/
 ├── <n2h-service>/
 └── README.md
 ```
@@ -60,7 +60,7 @@ gateway](internal-gateway/README.md) routes `/user-api/` to user-service and
 `/supplier-api/` to supplier-service, stripping only that service prefix.
 Services independently validate Keycloak tokens and enforce their existing
 endpoint permissions. Supplier-service no longer calls user-service for access
-verification. See the [authentication setup and account import](keycloak/README.md).
+verification. See the [authentication setup](user-service/keycloak/README.md).
 The UI also proxies API requests through this gateway.
 
 Run `docker compose up --build` from the repository root and open the UI at

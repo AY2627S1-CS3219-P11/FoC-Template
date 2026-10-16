@@ -15,8 +15,8 @@ Never expose administration secrets through UI `VITE_*` settings.
 From the repository root:
 
 ```sh
-docker compose -p foc-template --env-file .env -f keycloak/compose.yaml up -d --wait
-python3 keycloak/configure.py --env-file .env
+docker compose -p foc-template --env-file .env -f user-service/keycloak/compose.yaml up -d --wait
+python3 user-service/keycloak/configure.py --env-file .env
 docker compose -p foc-template up -d --build
 ```
 

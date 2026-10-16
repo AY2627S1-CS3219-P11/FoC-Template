@@ -1,6 +1,6 @@
-# Local development infrastructure, also included by ../compose.yaml.
+# User-service identity infrastructure, also included by ../../compose.yaml.
 # Standalone, from the repository root:
-# docker compose --env-file .env -f keycloak/compose.yaml up -d --wait
+# docker compose --env-file .env -f user-service/keycloak/compose.yaml up -d --wait
 services:
   keycloak-db:
     image: postgres:17.6-alpine
@@ -37,6 +37,7 @@ services:
       - "127.0.0.1:${KEYCLOAK_HTTP_PORT:-8080}:8080"
     volumes:
       - ./realms:/opt/keycloak/data/import:ro
+      - ./themes:/opt/keycloak/themes:ro
     depends_on:
       keycloak-db:
         condition: service_healthy

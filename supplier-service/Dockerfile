@@ -5,11 +5,12 @@ COPY --from=ghcr.io/astral-sh/uv:0.12.13 /uv /uvx /bin/
 WORKDIR /app
 
 # Install dependencies as per uv.lock
-COPY supplier-service/pyproject.toml supplier-service/uv.lock ./
+COPY pyproject.toml uv.lock ./
 
 RUN uv sync --locked --no-dev --no-install-project
 
-COPY supplier-service .
+COPY src ./src
+COPY data ./data
 
 # Use the virtualenv created by uv
 ENV PATH="/app/.venv/bin:$PATH"

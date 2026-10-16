@@ -2,8 +2,7 @@
 services:
   user-service:
     build:
-      context: ..
-      dockerfile: user-service/Dockerfile
+      context: .
     env_file:
       - .env
     environment:

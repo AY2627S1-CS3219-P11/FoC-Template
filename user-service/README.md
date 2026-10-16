@@ -17,7 +17,7 @@ uv run --locked python -m pytest -q
 ```
 
 Open <http://127.0.0.1:5005/docs>. Tests use mock Keycloak responses, not a database.
-See the [Keycloak guide](../keycloak/README.md) for local infrastructure setup.
+See the [Keycloak guide](keycloak/README.md) for local infrastructure setup.
 
 ## API ownership
 
