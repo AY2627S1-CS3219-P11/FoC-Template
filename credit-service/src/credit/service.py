@@ -10,20 +10,32 @@ from credit.exceptions import (
     CreditNotFoundError,
     CreditReservationConflictError,
     CreditReservationNotFoundError,
+    CreditRequestConflictError,
     InsufficientCreditsError,
 )
 from credit.models import (
     MAX_CREDITS,
     CreditAuditLogResponse,
+    CreditCommand,
+    CreditOperationOutcome,
+    CreditOperationResult,
+    CreditOutboxResponse,
+    CreditRejectionReason,
     CreditReservationResult,
+    CreditReservationStatus,
     CreditResponse,
+    ReleaseCreditCommand,
+    ReserveCreditCommand,
+    TransferCreditCommand,
     UserCreated,
 )
 from credit.orm_models import Credit, CreditReservation
 from credit.repository import (
+    claim_credit_command,
     find_credit_account_by_user_id,
     find_credit_audit_logs_by_user_id,
     find_credit_reservation,
+    find_credit_outcome,
     find_credit_transfer,
     insert_credit_account,
     insert_credit_reservation,
@@ -34,6 +46,78 @@ from credit.repository import (
     record_credit_transfer,
     sum_active_reservations,
 )
+
+
+async def process_credit_command(
+    session: AsyncSession, command: CreditCommand,
+) -> CreditOperationResult:
+    """Commit a command's decision with its credit changes; repeat its original reply."""
+    async with _operation_transaction(session):
+        claimed = await claim_credit_command(session, command)
+        entry = await find_credit_outcome(session, command.request_id)
+        if entry is None:
+            raise CreditConsistencyError("The command's outbox record is missing.")
+
+        if not claimed:
+            outcome = CreditOutboxResponse.model_validate(entry).payload
+            original = outcome.model_dump(include=set(type(command).model_fields))
+            if outcome.operation != command.operation or original != command.model_dump():
+                raise CreditRequestConflictError("Request ID was reused for another command.")
+            entry.published_at = None
+            return outcome
+
+        reservation = None
+        reason = None
+        try:
+            reservation = await _execute_credit_command(session, command)
+        except (CreditNotFoundError, CreditReservationNotFoundError, CreditConsistencyError):
+            raise
+        except ValueError as error:
+            match error:
+                case InsufficientCreditsError():
+                    reason = CreditRejectionReason.INSUFFICIENT_CREDITS
+                case CreditReservationConflictError():
+                    reason = CreditRejectionReason.RESERVATION_CONFLICT
+                case _ if type(error) is ValueError:
+                    reason = CreditRejectionReason.INVALID_OPERATION
+                case _:
+                    raise
+
+        if (
+            isinstance(command, ReserveCreditCommand)
+            and reservation is not None
+            and reservation.status != CreditReservationStatus.RESERVED
+        ):
+            reservation = None
+            reason = CreditRejectionReason.RESERVATION_CONFLICT
+
+        outcome = CreditOperationResult(
+            **command.model_dump(),
+            operation=command.operation,
+            outcome=(
+                CreditOperationOutcome.REJECTED
+                if reason is not None else CreditOperationOutcome.SUCCEEDED
+            ),
+            reservation=reservation,
+            reason=reason,
+        )
+        entry.payload = outcome.model_dump_json()
+        await session.flush()
+        return outcome
+
+
+async def _execute_credit_command(
+    session: AsyncSession, command: CreditCommand,
+) -> CreditReservationResult:
+    match command:
+        case ReserveCreditCommand():
+            return await reserve_credits(
+                session, command.order_id, command.requester_id, command.amount,
+            )
+        case ReleaseCreditCommand():
+            return await release_credits(session, command.order_id)
+        case TransferCreditCommand():
+            return await transfer_credits(session, command.order_id, command.courier_id)
 
 
 async def create_credit_account(session: AsyncSession, event: UserCreated) -> None:
@@ -112,9 +196,9 @@ async def release_credits(
         reservation = await _require_reservation(session, order_id)
         accounts = await lock_credit_accounts(session, {reservation.user_id})
         reservation = await _require_reservation(session, order_id, for_update=True)
-        if reservation.status == "RELEASED":
+        if reservation.status == CreditReservationStatus.RELEASED:
             return await _reservation_result(session, reservation)
-        if reservation.status != "RESERVED":
+        if reservation.status != CreditReservationStatus.RESERVED:
             raise CreditReservationConflictError("Transferred credits cannot be released.")
 
         account = _require_account(accounts, reservation.user_id)
@@ -125,7 +209,7 @@ async def release_credits(
         account.reserved_credits -= reservation.amount
         account.available_credits += reservation.amount
         account.updated_at = now
-        reservation.status = "RELEASED"
+        reservation.status = CreditReservationStatus.RELEASED
         reservation.updated_at = now
         record_credit_release(session, reservation, now)
         await session.flush()
@@ -144,12 +228,12 @@ async def transfer_credits(
 
         accounts = await lock_credit_accounts(session, {reservation.user_id, courier_id})
         reservation = await _require_reservation(session, order_id, for_update=True)
-        if reservation.status == "TRANSFERRED":
+        if reservation.status == CreditReservationStatus.TRANSFERRED:
             result = await _reservation_result(session, reservation)
             if result.recipient_user_id != courier_id:
                 raise CreditReservationConflictError("The order was transferred to another courier.")
             return result
-        if reservation.status != "RESERVED":
+        if reservation.status != CreditReservationStatus.RESERVED:
             raise CreditReservationConflictError("Released credits cannot be transferred.")
 
         requester = _require_account(accounts, reservation.user_id)
@@ -162,7 +246,7 @@ async def transfer_credits(
         requester.reserved_credits -= reservation.amount
         courier.available_credits += reservation.amount
         requester.updated_at = courier.updated_at = now
-        reservation.status = "TRANSFERRED"
+        reservation.status = CreditReservationStatus.TRANSFERRED
         reservation.updated_at = now
         record_credit_transfer(session, reservation, courier_id, now)
         await session.flush()
@@ -216,7 +300,7 @@ async def _reservation_result(
     session: AsyncSession, reservation: CreditReservation,
 ) -> CreditReservationResult:
     result = CreditReservationResult.model_validate(reservation)
-    if reservation.status == "TRANSFERRED":
+    if reservation.status == CreditReservationStatus.TRANSFERRED:
         try:
             transfer = await find_credit_transfer(session, reservation.order_id)
         except MultipleResultsFound:
