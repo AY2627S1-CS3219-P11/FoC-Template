@@ -16,3 +16,7 @@ class CreditReservationConflictError(ValueError):
 
 class CreditConsistencyError(ValueError):
     pass
+
+
+class CreditRequestConflictError(ValueError):
+    pass

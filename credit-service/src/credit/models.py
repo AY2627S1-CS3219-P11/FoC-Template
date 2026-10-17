@@ -1,8 +1,66 @@
 import datetime
+from enum import StrEnum
 from uuid import UUID
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, Json, model_validator
+
+
+class CreditOperation(StrEnum):
+    RESERVE = "RESERVE"
+    RELEASE = "RELEASE"
+    TRANSFER = "TRANSFER"
+
+
+class CreditAuditAction(StrEnum):
+    INITIAL_ALLOCATION = "INITIAL_ALLOCATION"
+    RESERVE = "RESERVE"
+    RELEASE = "RELEASE"
+    TRANSFER = "TRANSFER"
+
+
+class CreditReservationStatus(StrEnum):
+    RESERVED = "RESERVED"
+    RELEASED = "RELEASED"
+    TRANSFERRED = "TRANSFERRED"
+
+
+class CreditOperationOutcome(StrEnum):
+    SUCCEEDED = "SUCCEEDED"
+    REJECTED = "REJECTED"
+
+
+class CreditRejectionReason(StrEnum):
+    INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
+    RESERVATION_CONFLICT = "RESERVATION_CONFLICT"
+    INVALID_OPERATION = "INVALID_OPERATION"
+
+
+class MessageType(StrEnum):
+    USER_CREATED = "UserCreated"
+    CREDIT_ACCOUNTS_SYNC_REQUESTED = "CreditAccountsSyncRequested"
+    CREDIT_OPERATION_RESULT = "CreditOperationResult"
+
+
+class ExchangeName(StrEnum):
+    USER_EVENTS = "user_events"
+    CREDIT_COMMANDS = "credit_commands"
+    CREDIT_EVENTS = "credit_events"
+
+
+class QueueName(StrEnum):
+    CREDIT_USER_CREATED = "credit_user_created"
+    CREDIT_ACCOUNTS_SYNC_REQUESTED = "credit_accounts_sync_requested"
+    CREDIT_COMMANDS = "credit_service_commands_queue"
+
+
+class RoutingKey(StrEnum):
+    USER_CREATED = "user.created"
+    CREDIT_ACCOUNTS_SYNC_REQUESTED = "credit.accounts.sync.requested"
+    CREDIT_RESERVE = "credit.reserve"
+    CREDIT_RELEASE = "credit.release"
+    CREDIT_TRANSFER = "credit.transfer"
+    CREDIT_OPERATION_RESULT = "credit.operation.result"
 
 
 MAX_CREDITS = 9_223_372_036_854_775_807
@@ -22,7 +80,7 @@ class CreditAuditLogResponse(BaseModel):
     user_id: UUID
     recipient_user_id: UUID | None = None
     order_id: UUID | None = None
-    action: Literal["INITIAL_ALLOCATION", "RESERVE", "RELEASE", "TRANSFER"]
+    action: CreditAuditAction
     amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
     created_at: datetime.datetime
 
@@ -33,32 +91,83 @@ class CreditReservationResult(BaseModel):
     order_id: UUID
     user_id: UUID
     amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
-    status: Literal["RESERVED", "RELEASED", "TRANSFERRED"]
+    status: CreditReservationStatus
     recipient_user_id: UUID | None = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
 
 class UserCreated(BaseModel):
-    event: Literal["UserCreated"]
+    event: Literal[MessageType.USER_CREATED]
     user_id: UUID
     created_at: datetime.datetime
 
 
 class CreditAccountsSyncRequested(BaseModel):
-    event: Literal["CreditAccountsSyncRequested"]
+    event: Literal[MessageType.CREDIT_ACCOUNTS_SYNC_REQUESTED]
 
 
 class ReserveCreditCommand(BaseModel):
+    request_id: UUID
     order_id: UUID
     requester_id: UUID
     amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
 
+    @property
+    def operation(self) -> CreditOperation:
+        return CreditOperation.RESERVE
+
 
 class ReleaseCreditCommand(BaseModel):
+    request_id: UUID
     order_id: UUID
+
+    @property
+    def operation(self) -> CreditOperation:
+        return CreditOperation.RELEASE
 
 
 class TransferCreditCommand(BaseModel):
+    request_id: UUID
     order_id: UUID
     courier_id: UUID
+
+    @property
+    def operation(self) -> CreditOperation:
+        return CreditOperation.TRANSFER
+
+
+type CreditCommand = ReserveCreditCommand | ReleaseCreditCommand | TransferCreditCommand
+
+
+# Payload saved in Credit's outbox and sent to Order
+class CreditOperationResult(BaseModel):
+    event: Literal[MessageType.CREDIT_OPERATION_RESULT] = MessageType.CREDIT_OPERATION_RESULT
+    request_id: UUID
+    order_id: UUID
+    operation: CreditOperation
+    outcome: CreditOperationOutcome
+    requester_id: UUID | None = None
+    courier_id: UUID | None = None
+    amount: int | None = Field(default=None, ge=1, le=MAX_CREDITS, strict=True)
+    reservation: CreditReservationResult | None = None
+    reason: CreditRejectionReason | None = None
+
+    @model_validator(mode="after")
+    def validate_outcome(self) -> Self:
+        if self.outcome == CreditOperationOutcome.SUCCEEDED:
+            if self.reservation is None or self.reason is not None:
+                raise ValueError("A successful outcome requires a reservation result only.")
+            if self.reservation.order_id != self.order_id:
+                raise ValueError("The reservation must belong to the outcome's order.")
+        elif self.reason is None or self.reservation is not None:
+            raise ValueError("A rejected outcome requires a rejection reason only.")
+        return self
+
+
+class CreditOutboxResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    request_id: UUID
+    payload: Json[CreditOperationResult]
+    published_at: datetime.datetime | None = None

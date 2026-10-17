@@ -5,8 +5,49 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from credit.models import CreditAuditLogResponse, CreditResponse, UserCreated
-from credit.orm_models import Credit, CreditAuditLog, CreditReservation
+from credit.models import (
+    CreditAuditAction,
+    CreditAuditLogResponse,
+    CreditCommand,
+    CreditReservationStatus,
+    CreditResponse,
+    UserCreated,
+)
+from credit.orm_models import Credit, CreditAuditLog, CreditOutbox, CreditReservation
+
+
+async def claim_credit_command(session: AsyncSession, command: CreditCommand) -> bool:
+    # Claim the request ID and save its final outcome in the same transaction
+    statement = (
+        insert(CreditOutbox)
+        .values(request_id=command.request_id, payload=command.model_dump_json())
+        .on_conflict_do_nothing(index_elements=[CreditOutbox.request_id])
+        .returning(CreditOutbox.request_id)
+    )
+    return await session.scalar(statement) is not None
+
+
+async def find_credit_outcome(
+    session: AsyncSession, request_id: UUID,
+) -> CreditOutbox | None:
+    statement = (
+        select(CreditOutbox)
+        .where(CreditOutbox.request_id == request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    return await session.scalar(statement)
+
+
+async def find_pending_credit_outcome(session: AsyncSession) -> CreditOutbox | None:
+    statement = (
+        select(CreditOutbox)
+        .where(CreditOutbox.published_at.is_(None))
+        .order_by(CreditOutbox.request_id)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+    return await session.scalar(statement)
 
 
 async def find_credit_account_by_user_id(
@@ -60,7 +101,10 @@ async def insert_credit_reservation(
 ) -> CreditReservation | None:
     statement = (
         insert(CreditReservation)
-        .values(order_id=order_id, user_id=user_id, amount=amount, status="RESERVED")
+        .values(
+            order_id=order_id, user_id=user_id, amount=amount,
+            status=CreditReservationStatus.RESERVED,
+        )
         .on_conflict_do_nothing(index_elements=[CreditReservation.order_id])
         .returning(CreditReservation)
         .execution_options(populate_existing=True)
@@ -71,7 +115,7 @@ async def insert_credit_reservation(
 async def sum_active_reservations(session: AsyncSession, user_id: UUID) -> int:
     statement = select(func.coalesce(func.sum(CreditReservation.amount), 0)).where(
         CreditReservation.user_id == user_id,
-        CreditReservation.status == "RESERVED",
+        CreditReservation.status == CreditReservationStatus.RESERVED,
     )
     return int(await session.scalar(statement))
 
@@ -81,7 +125,7 @@ async def find_credit_transfer(
 ) -> CreditAuditLog | None:
     statement = select(CreditAuditLog).where(
         CreditAuditLog.order_id == order_id,
-        CreditAuditLog.action == "TRANSFER",
+        CreditAuditLog.action == CreditAuditAction.TRANSFER,
     )
     return (await session.scalars(statement)).one_or_none()
 
@@ -106,7 +150,7 @@ def record_initial_credit_allocation(
 ) -> None:
     session.add(CreditAuditLog(
         user_id=user_id,
-        action="INITIAL_ALLOCATION",
+        action=CreditAuditAction.INITIAL_ALLOCATION,
         amount=amount,
         created_at=created_at,
     ))
@@ -118,7 +162,7 @@ def record_credit_reservation(
     session.add(CreditAuditLog(
         user_id=reservation.user_id,
         order_id=reservation.order_id,
-        action="RESERVE",
+        action=CreditAuditAction.RESERVE,
         amount=reservation.amount,
         created_at=created_at,
     ))
@@ -130,7 +174,7 @@ def record_credit_release(
     session.add(CreditAuditLog(
         user_id=reservation.user_id,
         order_id=reservation.order_id,
-        action="RELEASE",
+        action=CreditAuditAction.RELEASE,
         amount=reservation.amount,
         created_at=created_at,
     ))
@@ -144,7 +188,7 @@ def record_credit_transfer(
         user_id=reservation.user_id,
         recipient_user_id=recipient_user_id,
         order_id=reservation.order_id,
-        action="TRANSFER",
+        action=CreditAuditAction.TRANSFER,
         amount=reservation.amount,
         created_at=created_at,
     ))

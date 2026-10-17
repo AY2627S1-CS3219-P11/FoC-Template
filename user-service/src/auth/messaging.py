@@ -9,6 +9,7 @@ from aio_pika.abc import AbstractChannel, AbstractConnection, AbstractExchange
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from auth.events import consume_credit_accounts_sync_requested
+from auth.models import ExchangeName, QueueName, RoutingKey
 
 
 class MessagingResources(NamedTuple):
@@ -41,15 +42,15 @@ async def initialize_messaging(
         )
         resources.push_async_callback(channel.close)
         user_exchange = await channel.declare_exchange(
-            "user_events", aio_pika.ExchangeType.DIRECT, durable=True,
+            ExchangeName.USER_EVENTS, aio_pika.ExchangeType.DIRECT, durable=True,
         )
         await channel.set_qos(prefetch_count=1)
 
         sync_request_queue = await channel.declare_queue(
-            "credit_accounts_sync_requested", durable=True, exclusive=False,
+            QueueName.CREDIT_ACCOUNTS_SYNC_REQUESTED, durable=True, exclusive=False,
         )
         await sync_request_queue.bind(
-            user_exchange, routing_key="credit.accounts.sync.requested",
+            user_exchange, routing_key=RoutingKey.CREDIT_ACCOUNTS_SYNC_REQUESTED,
         )
         consumer_tag = await sync_request_queue.consume(
             partial(consume_credit_accounts_sync_requested, session_factory=session_factory),

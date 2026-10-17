@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from auth.models import CreditAccountsSyncRequested
+from auth.models import CreditAccountsSyncRequested, RoutingKey, UserCreatedOutboxResponse
 from auth.orm_models import UserCreatedOutbox
 from auth.repository import enqueue_user_created_events
 
@@ -61,16 +61,21 @@ async def publish_pending_user_events(
                 if pending is None:
                     return
 
+                outbox_response = UserCreatedOutboxResponse.model_validate(pending)
+                payload = outbox_response.payload
+                if payload.user_id != outbox_response.user_id:
+                    raise ValueError("The stored event has a different user ID.")
+
                 async with asyncio.timeout(5):
                     confirmation = await exchange.publish(
                         aio_pika.Message(
-                            body=pending.payload.encode("utf-8"),
+                            body=payload.model_dump_json().encode("utf-8"),
                             content_type="application/json",
-                            type="UserCreated",
-                            message_id=str(pending.user_id),
+                            type=payload.event,
+                            message_id=str(outbox_response.user_id),
                             delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                         ),
-                        routing_key="user.created",
+                        routing_key=RoutingKey.USER_CREATED,
                         mandatory=True,
                     )
                 if not isinstance(confirmation, Basic.Ack):
