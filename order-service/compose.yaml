@@ -1,6 +1,7 @@
 # Included by ../compose.yaml to use the shared RabbitMQ broker.
 services:
-  credit-service:
+  order-service:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: Dockerfile
@@ -8,9 +9,8 @@ services:
       - .env
     environment:
       INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
-      INITIAL_CREDIT_ALLOCATION: ${INITIAL_CREDIT_ALLOCATION:-100}
     ports:
-      - "3002:3002"
+      - "127.0.0.1:3003:3002"
     healthcheck:
       test:
         - CMD
