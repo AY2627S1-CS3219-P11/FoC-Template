@@ -3,7 +3,16 @@ from enum import StrEnum
 from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, EmailStr, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    Json,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 
 
 PASSWORD_REQUIREMENTS_MESSAGE = (
@@ -16,6 +25,24 @@ class UserRole(StrEnum):
     USER = "user"
     ADMIN = "admin"
     ADMIN_MANAGER = "admin_manager"
+
+
+class MessageType(StrEnum):
+    USER_CREATED = "UserCreated"
+    CREDIT_ACCOUNTS_SYNC_REQUESTED = "CreditAccountsSyncRequested"
+
+
+class ExchangeName(StrEnum):
+    USER_EVENTS = "user_events"
+
+
+class QueueName(StrEnum):
+    CREDIT_ACCOUNTS_SYNC_REQUESTED = "credit_accounts_sync_requested"
+
+
+class RoutingKey(StrEnum):
+    USER_CREATED = "user.created"
+    CREDIT_ACCOUNTS_SYNC_REQUESTED = "credit.accounts.sync.requested"
 
 
 class SignUpRequest(BaseModel):
@@ -64,13 +91,20 @@ class UserRecord(BaseModel):
 
 
 class UserCreated(BaseModel):
-    event: Literal["UserCreated"] = "UserCreated"
+    event: Literal[MessageType.USER_CREATED] = MessageType.USER_CREATED
     user_id: UUID
     created_at: datetime.datetime
 
 
+class UserCreatedOutboxResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    user_id: UUID
+    payload: Json[UserCreated]
+
+
 class CreditAccountsSyncRequested(BaseModel):
-    event: Literal["CreditAccountsSyncRequested"]
+    event: Literal[MessageType.CREDIT_ACCOUNTS_SYNC_REQUESTED]
 
 
 class UserRoleResponse(BaseModel):
