@@ -2,12 +2,27 @@ from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
 
-from sqlalchemy import CheckConstraint, DateTime, Enum as SQLEnum,  ForeignKey, Integer, Text, func, text
+from sqlalchemy import (
+    BigInteger,
+    CheckConstraint,
+    DateTime,
+    Enum as SQLEnum,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgresUUID
 
+
 class Base(DeclarativeBase):
     pass
+
 
 class Status(str, Enum):
     OPEN = "open"
@@ -18,6 +33,8 @@ class Status(str, Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
+    PENDING = "pending"
+    REJECTED = "rejected"
     
 
 class ErrandRequest(Base):
@@ -37,19 +54,21 @@ class ErrandRequest(Base):
 
     items: Mapped[list | dict] = mapped_column(JSONB, nullable=False,)
 
+    supplier_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     pickup_notes: Mapped[str | None] = mapped_column(Text, nullable=True,)
 
-    credits: Mapped[int] = mapped_column(Integer, nullable=False,)
+    credits: Mapped[int] = mapped_column(BigInteger, nullable=False,)
 
     status: Mapped[Status] = mapped_column(
         SQLEnum(Status, name="request_status", 
                 values_callable=lambda enum: [e.value for e in enum],),
         nullable=False,
-        default="'text'",
+        default=Status.PENDING,
     )
 
     courier_id: Mapped[UUID | None] = mapped_column(
-        PostgresUUID(as_uuid=True), nullable=False,
+        PostgresUUID(as_uuid=True), nullable=True,
     )
 
     created_at: Mapped[datetime] = mapped_column(
@@ -72,4 +91,46 @@ class ErrandRequest(Base):
 
     __table_args__ = (
         CheckConstraint("credits >= 1", name="errand_requests_credits_check"),
+    )
+
+
+class OrderCreationKey(Base):
+    __tablename__ = "order_creation_keys"
+
+    requester_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128), primary_key=True)
+    order_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("errand_requests.id", ondelete="CASCADE"),
+        nullable=False, unique=True,)
+    request_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class CreditCommandOutbox(Base):
+    __tablename__ = "credit_command_outbox"
+
+    id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, default=uuid4,
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("errand_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    routing_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    available_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(),
+    )
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("order_id", "routing_key", name="credit_command_outbox_order_routing_key"),
+        Index("credit_command_outbox_pending_idx", "available_at", "created_at"),
     )
