@@ -2,28 +2,45 @@ import asyncio
 from uuid import uuid4
 
 import aio_pika
-from aio_pika.abc import AbstractExchange, AbstractIncomingMessage, AbstractChannel
+from aio_pika.abc import AbstractExchange, AbstractIncomingMessage
 from pamqp.commands import Basic
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from credit.models import CreditAccountsSyncRequested, UserCreated, ReleaseCreditCommand, ReserveCreditCommand, TransferCreditCommand
-from credit.service import create_credit_account, release_credits, reserve_credits,transfer_credits
-from credit.exceptions import CreditNotFoundError, CreditReservationConflictError, CreditReservationNotFoundError, InsufficientCreditsError
+from credit.exceptions import CreditRequestConflictError
+from credit.models import (
+    CreditAccountsSyncRequested,
+    MessageType,
+    ReleaseCreditCommand,
+    ReserveCreditCommand,
+    RoutingKey,
+    TransferCreditCommand,
+    UserCreated,
+)
+from credit.service import create_credit_account, process_credit_command
 
+
+CREDIT_COMMAND_MODELS = {
+    RoutingKey.CREDIT_RESERVE: ReserveCreditCommand,
+    RoutingKey.CREDIT_RELEASE: ReleaseCreditCommand,
+    RoutingKey.CREDIT_TRANSFER: TransferCreditCommand,
+}
+
+
+# Replay users so Credit can create missing accounts
 async def request_credit_account_sync(exchange: AbstractExchange) -> None:
-    event = CreditAccountsSyncRequested(event="CreditAccountsSyncRequested")
+    event = CreditAccountsSyncRequested(event=MessageType.CREDIT_ACCOUNTS_SYNC_REQUESTED)
     try:
         async with asyncio.timeout(5):
             confirmation = await exchange.publish(
                 aio_pika.Message(
                     body=event.model_dump_json().encode("utf-8"),
                     content_type="application/json",
-                    type="CreditAccountsSyncRequested",
+                    type=event.event,
                     message_id=str(uuid4()),
                     delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                 ),
-                routing_key="credit.accounts.sync.requested",
+                routing_key=RoutingKey.CREDIT_ACCOUNTS_SYNC_REQUESTED,
                 mandatory=True,
             )
         if not isinstance(confirmation, Basic.Ack):
@@ -33,6 +50,7 @@ async def request_credit_account_sync(exchange: AbstractExchange) -> None:
     print("Credit account reconciliation requested; missing accounts will be initialized asynchronously.")
 
 
+# Create the credit account and initial allocation once
 async def consume_user_created(
     message: AbstractIncomingMessage,
     session_factory: async_sessionmaker[AsyncSession],
@@ -60,125 +78,66 @@ async def consume_user_created(
             print("Could not requeue UserCreated; unacknowledged delivery awaits broker recovery.")
 
 
-
-async def consume_reserve_credit(
+# Commit the outcome before acknowledging the command
+async def consume_credit_command(
     message: AbstractIncomingMessage,
     session_factory: async_sessionmaker[AsyncSession],
+    command_exchange: AbstractExchange,
 ) -> None:
     try:
-        command = ReserveCreditCommand.model_validate_json(message.body)
+        credit_command = CREDIT_COMMAND_MODELS[message.routing_key].model_validate_json(message.body)
     except ValidationError:
-        print("Invalid ReserveCreditCommand payload; message rejected without requeue.")
+        print("Invalid credit command; message rejected without requeue.")
         await message.reject(requeue=False)
         return
 
     try:
         async with session_factory() as session:
-            await reserve_credits(
-                session=session,
-                order_id=command.order_id,
-                requester_id=command.requester_id,
-                amount=command.amount,
-            )
+            outcome = await process_credit_command(session, credit_command)
         await message.ack()
-    except (InsufficientCreditsError, CreditReservationConflictError, CreditNotFoundError, ValueError) as error:
-        print(f"Reserve credit rejected due to domain validation ({type(error).__name__}): {error}")
+        print(f"Credit {outcome.operation} {outcome.request_id}: {outcome.outcome}.")
+    except CreditRequestConflictError:
+        print(
+            f"Credit request {credit_command.request_id} reused for another command; "
+            "message rejected without requeue."
+        )
         await message.reject(requeue=False)
     except Exception as error:
-        print(f"Reserve credit failed ({type(error).__name__}); message will be requeued for retry.")
-        await asyncio.sleep(2)
-        try:
-            await message.nack(requeue=True)
-        except Exception:
-            print("Could not requeue ReserveCreditCommand; delivery awaits broker recovery.")
+        print(
+            f"Credit {credit_command.operation} {credit_command.request_id} "
+            f"processing failed ({type(error).__name__}); command will be retried."
+        )
+        await _retry_credit_command(message, command_exchange)
 
 
-async def consume_release_credit(
+# Retry through the command exchange so queued commands can run first
+async def _retry_credit_command(
     message: AbstractIncomingMessage,
-    session_factory: async_sessionmaker[AsyncSession],
+    command_exchange: AbstractExchange,
 ) -> None:
+    await asyncio.sleep(2)
     try:
-        command = ReleaseCreditCommand.model_validate_json(message.body)
-    except ValidationError:
-        print("Invalid ReleaseCreditCommand payload; message rejected without requeue.")
-        await message.reject(requeue=False)
-        return
-
-    try:
-        async with session_factory() as session:
-            await release_credits(session=session, order_id=command.order_id)
+        confirmation = await command_exchange.publish(
+            aio_pika.Message(
+                body=message.body,
+                content_type=message.content_type or "application/json",
+                type=message.type,
+                message_id=message.message_id,
+                correlation_id=message.correlation_id,
+                headers=dict(message.headers),
+                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+            ),
+            routing_key=message.routing_key,
+            mandatory=True,
+            timeout=5,
+        )
+        if not isinstance(confirmation, Basic.Ack):
+            raise RuntimeError("RabbitMQ did not confirm the credit retry.")
         await message.ack()
-    except (CreditReservationNotFoundError, CreditReservationConflictError, CreditNotFoundError) as error:
-        print(f"Release credit rejected due to domain error ({type(error).__name__}): {error}")
-        await message.reject(requeue=False)
     except Exception as error:
-        print(f"Release credit failed ({type(error).__name__}); message will be requeued for retry.")
-        await asyncio.sleep(2)
-        try:
-            await message.nack(requeue=True)
-        except Exception:
-            print("Could not requeue ReleaseCreditCommand; delivery awaits broker recovery.")
-
-
-async def consume_transfer_credit(
-    message: AbstractIncomingMessage,
-    session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    try:
-        command = TransferCreditCommand.model_validate_json(message.body)
-    except ValidationError:
-        print("Invalid TransferCreditCommand payload; message rejected without requeue.")
-        await message.reject(requeue=False)
-        return
-
-    try:
-        async with session_factory() as session:
-            await transfer_credits(
-                session=session,
-                order_id=command.order_id,
-                courier_id=command.courier_id,
-            )
-        await message.ack()
-    except (CreditReservationNotFoundError, CreditReservationConflictError, CreditNotFoundError, ValueError) as error:
-        print(f"Transfer credit rejected due to domain validation ({type(error).__name__}): {error}")
-        await message.reject(requeue=False)
-    except Exception as error:
-        print(f"Transfer credit failed ({type(error).__name__}); message will be requeued for retry.")
-        await asyncio.sleep(2)
-        try:
-            await message.nack(requeue=True)
-        except Exception:
-            print("Could not requeue TransferCreditCommand; delivery awaits broker recovery.")
-
-
-async def setup_credit_command_consumers(
-    channel: AbstractChannel,
-    session_factory: async_sessionmaker[AsyncSession],
-) -> None:
-    exchange = await channel.declare_exchange(
-        name="credit_commands",
-        type=aio_pika.ExchangeType.DIRECT,
-        durable=True,
-    )
-
-    queue = await channel.declare_queue("credit_service_commands_queue", durable=True)
-
-    routing_key_map = {
-        "credit.reserve": consume_reserve_credit,
-        "credit.release": consume_release_credit,
-        "credit.transfer": consume_transfer_credit,
-    }
-
-    for routing_key in routing_key_map:
-        await queue.bind(exchange, routing_key=routing_key)
-
-    async def on_message(message: AbstractIncomingMessage) -> None:
-        handler = routing_key_map.get(message.routing_key)
-        if handler:
-            await handler(message, session_factory)
-        else:
-            print(f"Unhandled routing key '{message.routing_key}'; rejecting without requeue.")
-            await message.reject(requeue=False)
-
-    await queue.consume(on_message)
-    print("Registered listeners for credit.reserve, credit.release, and credit.transfer.")
+        print(f"Credit retry publication failed ({type(error).__name__}); delivery retained.")
+        if not message.processed:
+            try:
+                await message.nack(requeue=True)
+            except Exception:
+                print("Credit command awaits broker recovery as an unacknowledged delivery.")

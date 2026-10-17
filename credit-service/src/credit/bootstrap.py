@@ -1,5 +1,6 @@
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -9,6 +10,7 @@ from common.gateway import get_internal_gateway_url
 from credit.events import request_credit_account_sync
 from credit.messaging import MessagingResources, initialize_messaging
 from credit.orm_models import Base
+from credit.publisher import run_credit_event_publisher
 
 
 @asynccontextmanager
@@ -28,4 +30,12 @@ async def initialize_credit_service() -> AsyncIterator[MessagingResources]:
             settings.rabbitmq_url.get_secret_value(), session_factory,
         ) as messaging:
             await request_credit_account_sync(messaging.user_exchange)
-            yield messaging
+            publisher = asyncio.create_task(
+                run_credit_event_publisher(session_factory, messaging.result_exchange),
+            )
+            try:
+                yield messaging
+            finally:
+                publisher.cancel()
+                with suppress(asyncio.CancelledError):
+                    await publisher
