@@ -134,3 +134,17 @@ class CreditCommandOutbox(Base):
         UniqueConstraint("order_id", "routing_key", name="credit_command_outbox_order_routing_key"),
         Index("credit_command_outbox_pending_idx", "available_at", "created_at"),
     )
+
+
+class CreditCommandResult(Base):
+    __tablename__ = "order_credit_results"
+
+    request_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("credit_command_outbox.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp(),
+    )

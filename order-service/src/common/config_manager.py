@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     database_url: SecretStr | None = None
     rabbitmq_url: SecretStr | None = None
     internal_gateway_url: str | None = None
-    initial_order_allocation: int = Field(default=100, ge=1, le=9_223_372_036_854_775_807)
+    credit_result_timeout_seconds: int = Field(default=60, ge=5)
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",
