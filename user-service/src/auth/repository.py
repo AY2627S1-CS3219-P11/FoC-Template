@@ -3,7 +3,6 @@ from uuid import UUID
 import datetime
 
 from sqlalchemy import delete, func, or_, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
 
@@ -17,7 +16,6 @@ from auth.models import (
     UserRole,
     UserRoleResponse,
 )
-from auth.exceptions import UserAlreadyExistsError
 
 
 async def create_authentication_session(
@@ -33,7 +31,6 @@ async def create_authentication_session(
             expires_at=expires_at,
         )
     )
-    await session.commit()
 
 
 async def authentication_session_exists(
@@ -60,7 +57,6 @@ async def delete_authentication_session(
             AuthenticationSession.access_token_hash == access_token_hash
         )
     )
-    await session.commit()
 
 async def create_user(session: AsyncSession,
                       username: str,email: str, hashed_password: str,) -> UserRecord:
@@ -69,23 +65,12 @@ async def create_user(session: AsyncSession,
 
     session.add(user)
 
-    try:
-        await session.flush()
-        await session.refresh(user)
-        event = UserCreated(user_id=user.user_id, created_at=user.created_at)
-        session.add(UserCreatedOutbox(
-            user_id=user.user_id, payload=event.model_dump_json(),
-        ))
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-
-        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
-
-        if constraint in {"users_username_key", "users_email_key", "users_user_email_key"}:
-            raise UserAlreadyExistsError("Username or Email already exists.") from None
-        
-        raise
+    await session.flush()
+    await session.refresh(user)
+    event = UserCreated(user_id=user.user_id, created_at=user.created_at)
+    session.add(UserCreatedOutbox(
+        user_id=user.user_id, payload=event.model_dump_json(),
+    ))
 
     return UserRecord(id=str(user.user_id), username=user.username,
         email=user.user_email, hashed_password=user.password_hash, user_role=user.user_role,)
@@ -114,7 +99,6 @@ async def enqueue_user_created_events(session: AsyncSession) -> None:
             )
     finally:
         await users.close()
-    await session.commit()
 
 
 async def find_user_by_email(session: AsyncSession, email: str,) -> UserRecord | None:
@@ -205,7 +189,7 @@ async def update_managed_user_role(
 
     user.user_role = role
     user.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    await session.commit()
+    await session.flush()
     await session.refresh(user)
 
     return ManagedUserResponse(
@@ -247,18 +231,7 @@ async def update_user_profile(session: AsyncSession, user_id: UUID,
 
     user.updated_at = datetime.datetime.now(datetime.timezone.utc)
 
-    try:
-        await session.commit()
-    except IntegrityError as exc:
-        await session.rollback()
-
-        constraint = getattr(exc.orig.diag, "constraint_name", None,)
-
-        if constraint == "users_username_key" or constraint == "users_email_key":
-            raise UserAlreadyExistsError("Username or Email already exists.") from None
-        
-        raise
-
+    await session.flush()
     await session.refresh(user)
 
     return CurrentUserResponse(username=user.username, email=user.user_email)

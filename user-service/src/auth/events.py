@@ -25,7 +25,7 @@ async def consume_credit_accounts_sync_requested(
         return
 
     try:
-        async with session_factory() as session:
+        async with session_factory.begin() as session:
             await enqueue_user_created_events(session)
         await message.ack()
         print("Credit account reconciliation queued through the UserCreated outbox.")

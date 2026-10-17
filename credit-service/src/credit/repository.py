@@ -1,12 +1,11 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from common.config_manager import settings
-from credit.models import CreditResponse, UserCreated
+from credit.models import CreditAuditLogResponse, CreditResponse, UserCreated
 from credit.orm_models import Credit, CreditAuditLog, CreditReservation
 
 
@@ -19,16 +18,18 @@ async def find_credit_account_by_user_id(
     return CreditResponse.model_validate(account)
 
 
-async def create_credit_account(session: AsyncSession, event: UserCreated) -> None:
+async def insert_credit_account(
+    session: AsyncSession, event: UserCreated, initial_allocation: int,
+) -> bool:
     statement = insert(Credit).values(
         user_id=event.user_id,
-        available_credits=settings.initial_credit_allocation,
+        available_credits=initial_allocation,
         reserved_credits=0,
         created_at=event.created_at,
         updated_at=event.created_at,
-    ).on_conflict_do_nothing(index_elements=[Credit.user_id])
-    await session.execute(statement)
-    await session.commit()
+    ).on_conflict_do_nothing(index_elements=[Credit.user_id]).returning(Credit.user_id)
+    created_user_id = await session.scalar(statement)
+    return created_user_id is not None
 
 
 async def lock_credit_accounts(
@@ -83,6 +84,56 @@ async def find_credit_transfer(
         CreditAuditLog.action == "TRANSFER",
     )
     return (await session.scalars(statement)).one_or_none()
+
+
+async def find_credit_audit_logs_by_user_id(
+    session: AsyncSession, user_id: UUID,
+) -> list[CreditAuditLogResponse]:
+    statement = (
+        select(CreditAuditLog)
+        .where(or_(
+            CreditAuditLog.user_id == user_id,
+            CreditAuditLog.recipient_user_id == user_id,
+        ))
+        .order_by(CreditAuditLog.created_at.desc(), CreditAuditLog.log_id.desc())
+    )
+    logs = await session.scalars(statement)
+    return [CreditAuditLogResponse.model_validate(log) for log in logs]
+
+
+def record_initial_credit_allocation(
+    session: AsyncSession, user_id: UUID, amount: int, created_at: datetime,
+) -> None:
+    session.add(CreditAuditLog(
+        user_id=user_id,
+        action="INITIAL_ALLOCATION",
+        amount=amount,
+        created_at=created_at,
+    ))
+
+
+def record_credit_reservation(
+    session: AsyncSession, reservation: CreditReservation, created_at: datetime,
+) -> None:
+    session.add(CreditAuditLog(
+        user_id=reservation.user_id,
+        order_id=reservation.order_id,
+        action="RESERVE",
+        amount=reservation.amount,
+        created_at=created_at,
+    ))
+
+
+def record_credit_release(
+    session: AsyncSession, reservation: CreditReservation, created_at: datetime,
+) -> None:
+    session.add(CreditAuditLog(
+        user_id=reservation.user_id,
+        order_id=reservation.order_id,
+        action="RELEASE",
+        amount=reservation.amount,
+        created_at=created_at,
+    ))
 
 
 def record_credit_transfer(

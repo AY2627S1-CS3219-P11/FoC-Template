@@ -35,7 +35,7 @@ async def initialize_user_service() -> AsyncIterator[UserServiceResources]:
             await connection.run_sync(Base.metadata.create_all)
 
         session_factory = async_sessionmaker(engine, expire_on_commit=False)
-        async with session_factory() as session:
+        async with session_factory.begin() as session:
             await provision_admin_manager(session)
 
         async with initialize_messaging(
@@ -94,5 +94,3 @@ async def provision_admin_manager(session: AsyncSession) -> None:
             user_role="admin_manager",
         )
     )
-
-    await session.commit()

@@ -4,6 +4,7 @@ from uuid import UUID
 from sqlalchemy.exc import MultipleResultsFound
 from sqlalchemy.ext.asyncio import AsyncSession, AsyncSessionTransaction
 
+from common.config_manager import settings
 from credit.exceptions import (
     CreditConsistencyError,
     CreditNotFoundError,
@@ -11,17 +12,36 @@ from credit.exceptions import (
     CreditReservationNotFoundError,
     InsufficientCreditsError,
 )
-from credit.models import MAX_CREDITS, CreditReservationResult, CreditResponse
+from credit.models import (
+    MAX_CREDITS,
+    CreditAuditLogResponse,
+    CreditReservationResult,
+    CreditResponse,
+    UserCreated,
+)
 from credit.orm_models import Credit, CreditReservation
 from credit.repository import (
     find_credit_account_by_user_id,
+    find_credit_audit_logs_by_user_id,
     find_credit_reservation,
     find_credit_transfer,
+    insert_credit_account,
     insert_credit_reservation,
     lock_credit_accounts,
+    record_initial_credit_allocation,
+    record_credit_reservation,
+    record_credit_release,
     record_credit_transfer,
     sum_active_reservations,
 )
+
+
+async def create_credit_account(session: AsyncSession, event: UserCreated) -> None:
+    """Create a wallet and record its initial allocation once."""
+    async with _operation_transaction(session):
+        amount = settings.initial_credit_allocation
+        if await insert_credit_account(session, event, amount):
+            record_initial_credit_allocation(session, event.user_id, amount, _now())
 
 
 async def get_current_credit_balance(user_id: UUID, session: AsyncSession) -> CreditResponse:
@@ -29,6 +49,12 @@ async def get_current_credit_balance(user_id: UUID, session: AsyncSession) -> Cr
     if account is None:
         raise CreditNotFoundError("Credit account not found.")
     return account
+
+
+async def get_credit_audit_logs(
+    user_id: UUID, session: AsyncSession,
+) -> list[CreditAuditLogResponse]:
+    return await find_credit_audit_logs_by_user_id(session, user_id)
 
 
 async def get_credit_reservation(
@@ -68,9 +94,11 @@ async def reserve_credits(
             _validate_reserve_retry(reservation, requester_id, amount)
             return await _reservation_result(session, reservation)
 
+        now = _now()
         account.available_credits -= amount
         account.reserved_credits += amount
-        account.updated_at = _now()
+        account.updated_at = now
+        record_credit_reservation(session, reservation, now)
         await session.flush()
         return await _reservation_result(session, reservation)
 
@@ -99,6 +127,7 @@ async def release_credits(
         account.updated_at = now
         reservation.status = "RELEASED"
         reservation.updated_at = now
+        record_credit_release(session, reservation, now)
         await session.flush()
         return await _reservation_result(session, reservation)
 
