@@ -6,7 +6,6 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from orders.orm_models import Status
 
-
 MAX_CREDITS = 9_223_372_036_854_775_807
 
 

@@ -1,24 +1,21 @@
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
-from fastapi import HTTPException
-
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from orders.models import (
-    COMMAND_MODELS,
-    COMMAND_ROUTING_KEYS,
     CreditCommand,
-    CreditOperation,
-    CreditOperationOutcome,
-    CreditOperationResult,
-    CreditReservationStatus,
     ReleaseCreditCommand,
     ReserveCreditCommand,
     TransferCreditCommand,
 )
-from orders.orm_models import CreditCommandOutbox, CreditCommandResult, ErrandRequest, Status
+from orders.orm_models import (
+    CreditCommandOutbox,
+    CreditCommandResult,
+    ErrandRequest,
+    Status,
+)
 
 
 async def find_pending_credit_command(session: AsyncSession, result_timeout_seconds: int,) -> CreditCommandOutbox | None:
@@ -45,13 +42,14 @@ async def find_pending_credit_command(session: AsyncSession, result_timeout_seco
     return await session.scalar(statement)
 
 
-async def get_open_orders(session: AsyncSession,) -> list[ErrandRequest]:
+async def get_open_orders(session: AsyncSession) -> list[ErrandRequest]:
     result = await session.execute(
         select(ErrandRequest)
         .where(
             ErrandRequest.status == Status.OPEN,
             ErrandRequest.expires_at > func.clock_timestamp(),
-        ).order_by(ErrandRequest.created_at.desc())
+        )
+        .order_by(ErrandRequest.created_at.desc())
     )
 
     return list(result.scalars().all())
@@ -65,12 +63,13 @@ async def get_requested_orders(session: AsyncSession, requester_id: UUID) -> lis
     result = await session.execute(
         select(ErrandRequest)
         .where(ErrandRequest.requester_id == requester_id)
-        .order_by(ErrandRequest.created_at.desc()))
+        .order_by(ErrandRequest.created_at.desc())
+    )
 
     return list(result.scalars().all())
 
 
-async def get_assigned_orders(session: AsyncSession, courier_id: UUID,) -> list[ErrandRequest]:
+async def get_assigned_orders(session: AsyncSession, courier_id: UUID) -> list[ErrandRequest]:
     result = await session.execute(
         select(ErrandRequest)
         .where(ErrandRequest.courier_id == courier_id)
@@ -231,7 +230,7 @@ def add_credit_command(session: AsyncSession, command: CreditCommand) -> None:
     session.add(CreditCommandOutbox(
         id=command.request_id,
         order_id=command.order_id,
-        routing_key=COMMAND_ROUTING_KEYS[command.operation],
+        routing_key=command.routing_key,
         payload=command.model_dump(mode="json"),))
 
 
@@ -249,112 +248,3 @@ async def expire_orders(session: AsyncSession) -> list[UUID]:
         add_credit_command(session, ReleaseCreditCommand(request_id=uuid4(), order_id=order_id))
     await session.commit()
     return expired_ids
-
-
-async def apply_credit_result(session: AsyncSession, result: CreditOperationResult) -> None:
-    # apply correlated outcome, consumer commits before acknowledging
-    pending = await session.scalar(
-        select(CreditCommandOutbox)
-        .where(CreditCommandOutbox.id == result.request_id)
-        .with_for_update()
-        .execution_options(populate_existing=True))
-
-    if pending is None:
-        raise ValueError("Credit result has no matching Order command")
-    
-    command = COMMAND_MODELS[pending.routing_key].model_validate(pending.payload)
-    expected = result.model_dump(include=set(type(command).model_fields))
-
-    if (pending.id != command.request_id or pending.order_id != result.order_id
-        or command.operation != result.operation or command.model_dump() != expected):
-
-        raise ValueError("Credit result does not match the original command")
-
-    payload = result.model_dump(mode="json")
-    saved_result = await session.get(CreditCommandResult, result.request_id)
-
-    if saved_result is not None:
-        if saved_result.payload != payload:
-            raise ValueError("Credit returned a different outcome for the same request")
-        return
-
-    order = await session.scalar(
-        select(ErrandRequest).where(ErrandRequest.id == result.order_id)
-        .with_for_update().execution_options(populate_existing=True))
-
-    if order is None:
-        raise ValueError("Credit result references an unknown order")
-
-    if result.operation == CreditOperation.RESERVE and (command.requester_id != order.requester_id
-                                                        or command.amount != order.credits):
-        raise ValueError("Credit reservation does not match the order")
-
-    if result.operation == CreditOperation.TRANSFER and command.courier_id != order.courier_id:
-        raise ValueError("Credit transfer does not match the assigned courier")
-
-    # The receipt and order transition commit together. Missing receipts let
-    # the publisher detect and recover operations whose replies were lost.
-    session.add(CreditCommandResult(request_id=result.request_id, payload=payload))
-
-    if result.outcome == CreditOperationOutcome.REJECTED:
-        pending.last_error = f"Credit {result.operation} rejected: {result.reason}"
-        if result.operation == CreditOperation.RESERVE and order.status == Status.PENDING:
-            order.status = Status.REJECTED
-            order.updated_at = await session.scalar(select(func.clock_timestamp()))
-        return
-
-    reservation = result.reservation
-    expected_status = {
-        CreditOperation.RESERVE: CreditReservationStatus.RESERVED,
-        CreditOperation.RELEASE: CreditReservationStatus.RELEASED,
-        CreditOperation.TRANSFER: CreditReservationStatus.TRANSFERRED,
-    }[result.operation]
-    if (reservation.user_id != order.requester_id or reservation.amount != order.credits
-        or reservation.status != expected_status
-        or (result.operation == CreditOperation.TRANSFER and reservation.recipient_user_id != order.courier_id)):
-        raise ValueError("Credit result contains unexpected reservation details")
-
-    # guard against duplicate/late results
-    if result.operation == CreditOperation.RESERVE and order.status == Status.PENDING:
-        now = await session.scalar(select(func.clock_timestamp()))
-        order.status = Status.OPEN
-        order.expires_at = now + timedelta(minutes=15)
-        order.updated_at = now
-    elif result.operation == CreditOperation.TRANSFER and order.status == Status.RECEIVED:
-        order.status = Status.COMPLETED
-        order.updated_at = await session.scalar(select(func.clock_timestamp()))
-    pending.last_error = None
-
-
-async def get_transition_error(session: AsyncSession, 
-                                order_id: UUID, user_id: UUID, action: str,):
-    order = await get_order_by_id(session, order_id)
-
-    if order is None:
-        raise HTTPException(
-            status_code=404,
-            detail="Order not found",
-        )
-
-    if action in {"accept", "cancel", "receive"}:
-        if action == "accept" and order.requester_id == user_id:
-            raise HTTPException(status_code=403, detail="Cannot accept your own order")
-        if action in {"cancel", "receive"} and order.requester_id != user_id:
-            raise HTTPException(status_code=403, detail="Only the requester can update this order")
-    elif order.courier_id != user_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Only the assigned courier can update this order",
-        )
-
-    action_description = {
-        "accept": "accepted",
-        "pick": "picked up",
-        "deliver": "delivered",
-        "cancel": "cancelled",
-        "receive": "marked as received",
-    }.get(action, action)
-    raise HTTPException(
-        status_code=409,
-        detail=f"Order cannot be {action_description} in its current state",
-    )

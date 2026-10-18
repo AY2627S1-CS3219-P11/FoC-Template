@@ -9,8 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth.dependencies import AuthenticatedUser, get_authenticated_user
 from common.db import get_session
 from common.gateway import get_internal_gateway_client
-
-
 from orders.repository import (
     accept_order,
     cancel_order,
@@ -20,12 +18,10 @@ from orders.repository import (
     get_open_orders,
     get_order_by_id,
     get_requested_orders,
-    get_transition_error,
     pickup_order,
     receive_order,
 )
 from orders.schemas import CreateOrderRequest, OrderResponse, SupplierSnapshot
-
 
 router = APIRouter (
     prefix="/orders",
@@ -35,20 +31,19 @@ router = APIRouter (
 
 Session = Annotated[AsyncSession, Depends(get_session)]
 
-# list all open order
+
 @router.get("/open", response_model=list[OrderResponse])
-async def list_open_orders(user: AuthenticatedUser, 
-                           session: Session):
+async def list_open_orders(user: AuthenticatedUser, session: Session):
     return await get_open_orders(session)
 
-# list all orders requested by user
+
 @router.get("/me/requested", response_model=list[OrderResponse])
-async def list_requested_orders(user: AuthenticatedUser, session: Session,):
+async def list_requested_orders(user: AuthenticatedUser, session: Session):
     return await get_requested_orders(session, user.user_id)
 
-# list all orders assigned to user
+
 @router.get("/me/assigned", response_model=list[OrderResponse])
-async def list_assigned_orders(user: AuthenticatedUser, session: Session,):
+async def list_assigned_orders(user: AuthenticatedUser, session: Session):
     return await get_assigned_orders(session, user.user_id)
 
 # list specific order, either requested/assigned
@@ -75,7 +70,12 @@ async def accept_order_endpoint(order_id: UUID, user: AuthenticatedUser, session
     order = await accept_order(session, order_id, user.user_id)
 
     if order is None:
-        await get_transition_error(session, order_id, user.user_id, "accept")
+        existing_order = await get_order_by_id(session, order_id)
+        if existing_order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if existing_order.requester_id == user.user_id:
+            raise HTTPException(status_code=403, detail="Cannot accept your own order")
+        raise HTTPException(status_code=409, detail="Order cannot be accepted in its current state")
 
     return order
 
@@ -85,7 +85,12 @@ async def pickup_order_endpoint(order_id: UUID, user: AuthenticatedUser, session
     order = await pickup_order(session, order_id, user.user_id,)
 
     if order is None:
-            await get_transition_error(session, order_id, user.user_id, "pick")
+        existing_order = await get_order_by_id(session, order_id)
+        if existing_order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if existing_order.courier_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Only the assigned courier can update this order")
+        raise HTTPException(status_code=409, detail="Order cannot be picked up in its current state")
 
     return order
 
@@ -95,11 +100,16 @@ async def deliver_order_endpoint(order_id: UUID, user: AuthenticatedUser, sessio
     order = await deliver_order(session, order_id, user.user_id,)
 
     if order is None:
-        await get_transition_error(session, order_id, user.user_id, "deliver")
+        existing_order = await get_order_by_id(session, order_id)
+        if existing_order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if existing_order.courier_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Only the assigned courier can update this order")
+        raise HTTPException(status_code=409, detail="Order cannot be delivered in its current state")
 
     return order
 
-# order creationg
+# order creation
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_order_endpoint(payload: CreateOrderRequest, user: AuthenticatedUser, session: Session, 
                                  client: Annotated[httpx.AsyncClient, Depends(get_internal_gateway_client)],): 
@@ -172,7 +182,12 @@ async def cancel_order_endpoint(order_id: UUID, user: AuthenticatedUser, session
     order = await cancel_order(session, order_id, user.user_id)
 
     if order is None:
-        await get_transition_error(session, order_id, user.user_id, "cancel")
+        existing_order = await get_order_by_id(session, order_id)
+        if existing_order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if existing_order.requester_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Only the requester can update this order")
+        raise HTTPException(status_code=409, detail="Order cannot be cancelled in its current state")
     return order
 
 
@@ -181,5 +196,10 @@ async def receive_order_endpoint(order_id: UUID, user: AuthenticatedUser, sessio
     order = await receive_order(session, order_id, user.user_id)
     
     if order is None:
-        await get_transition_error(session, order_id, user.user_id, "receive")
+        existing_order = await get_order_by_id(session, order_id)
+        if existing_order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if existing_order.requester_id != user.user_id:
+            raise HTTPException(status_code=403, detail="Only the requester can update this order")
+        raise HTTPException(status_code=409, detail="Order cannot be marked as received in its current state")
     return order

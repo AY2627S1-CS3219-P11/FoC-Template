@@ -5,7 +5,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from orders.repository import expire_orders
 
-
 logger = logging.getLogger("uvicorn.error")
 
 
