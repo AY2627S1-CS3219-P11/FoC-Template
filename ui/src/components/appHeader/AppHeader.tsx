@@ -11,7 +11,7 @@ const AppHeader = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { showErrorToast } = useToast()
-  const { activeRole, profile, session, setActiveRole } = useUser()
+  const { profile, session } = useUser()
   const [isOpen, setIsOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const dialogRef = useRef<HTMLDialogElement>(null)
@@ -49,10 +49,11 @@ const AppHeader = () => {
       <nav className={styles.navigation} aria-label="Main navigation">
         <Link to={routes.home} aria-current={location.pathname === routes.home ? 'page' : undefined}>Home</Link>
         <Link to={routes.suppliers} aria-current={location.pathname === routes.suppliers ? 'page' : undefined}>Suppliers</Link>
+        <Link to="/orders" aria-current={location.pathname === '/orders' ? 'page' : undefined}>Orders</Link>
         <button
           className={styles.accountButton}
           type="button"
-          aria-label="Open account and role settings"
+          aria-label="Open account settings"
           aria-expanded={isOpen}
           aria-controls="account-drawer"
           onClick={() => setIsOpen(true)}
@@ -91,14 +92,7 @@ const AppHeader = () => {
             </div>
           </div>
 
-          <fieldset className={styles.roleControl}>
-            <legend>Use Campus Errands as</legend>
-            <div>
-              <button type="button" aria-pressed={activeRole === 'requester'} onClick={() => setActiveRole('requester')}>Requester</button>
-              <button type="button" aria-pressed={activeRole === 'courier'} onClick={() => setActiveRole('courier')}>Courier</button>
-            </div>
-            <p>{activeRole === 'requester' ? 'Ask someone nearby for a pickup.' : 'Help someone with a campus delivery.'}</p>
-          </fieldset>
+          <p className={styles.capabilities}>Request a pickup or help with a delivery. You can do both at any time.</p>
 
           <nav className={styles.accountLinks} aria-label="Account navigation">
             <Link to={routes.profile} onClick={() => setIsOpen(false)}>
@@ -106,7 +100,7 @@ const AppHeader = () => {
               <span aria-hidden="true">→</span>
             </Link>
             {session.role === 'admin_manager' && (
-              <Link to={routes.adminManagerPortal} onClick={() => setIsOpen(false)}>
+              <Link className={styles.adminLink} to={routes.adminManagerPortal} onClick={() => setIsOpen(false)}>
                 <span>Admin manager portal</span>
                 <span aria-hidden="true">→</span>
               </Link>

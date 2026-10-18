@@ -4,6 +4,7 @@ import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useToast } from '../../components/toast/useToast'
 import { useUser } from '../../components/user/UserContext'
 import type { Supplier, SupplierCategory, SupplierCreateRequest } from './models'
+import { Modal } from '../../components/modal/Modal'
 import styles from './Suppliers.module.css'
 
 const POLL_INTERVAL_MS = 10_000
@@ -169,7 +170,7 @@ const Suppliers = () => {
             <h1>Around campus</h1>
             <p>Browse active suppliers and find the place that fits your next errand.</p>
           </div>
-          {isAdmin && <button className={styles.primaryButton} type="button" onClick={() => openEditor('new')}>Add supplier</button>}
+          {isAdmin && <div className={styles.adminTools}><span className="adminBadge">Admin only</span><button className={styles.primaryButton} data-admin-action type="button" aria-haspopup="dialog" onClick={() => openEditor('new')}>Add supplier</button></div>}
         </div>
 
         <section className={styles.filters} aria-label="Filter suppliers">
@@ -216,8 +217,9 @@ const Suppliers = () => {
                 </dl>
                 {isAdmin && (
                   <div className={styles.actions}>
-                    <button type="button" onClick={() => openEditor(supplier)}>Edit</button>
-                    <button type="button" onClick={() => void handleDeactivate(supplier)} disabled={deactivatingId === supplier.id}>
+                    <span className="adminBadge">Admin</span>
+                    <button data-admin-action type="button" aria-haspopup="dialog" onClick={() => openEditor(supplier)}>Edit</button>
+                    <button data-admin-action type="button" onClick={() => void handleDeactivate(supplier)} disabled={deactivatingId === supplier.id}>
                       {deactivatingId === supplier.id ? 'Deactivating…' : 'Deactivate'}
                     </button>
                   </div>
@@ -228,7 +230,9 @@ const Suppliers = () => {
         )}
 
         {editorTarget && (
-          <section className={styles.editor} aria-labelledby="supplier-editor-title">
+          <Modal id="supplier-editor" labelledBy="supplier-editor-title" onClose={() => setEditorTarget(null)} busy={isSaving}>
+          <section className={styles.editor}>
+            <span className="adminBadge">Admin only · Supplier management</span>
             <div className={styles.editorHeading}>
               <h2 id="supplier-editor-title">{editorTarget === 'new' ? 'Add supplier' : 'Edit supplier'}</h2>
               <button type="button" onClick={() => setEditorTarget(null)} disabled={isSaving}>Close</button>
@@ -246,10 +250,11 @@ const Suppliers = () => {
               <label className={styles.fullWidth}>Image URL <span>(optional)</span><input type="url" value={draft.imageUrl} onChange={(event) => updateDraft('imageUrl', event.target.value)} /></label>
               <div className={styles.formActions}>
                 <button type="button" onClick={() => setEditorTarget(null)} disabled={isSaving}>Cancel</button>
-                <button className={styles.primaryButton} type="submit" disabled={isSaving}>{isSaving ? 'Saving…' : 'Save supplier'}</button>
+                <button className={styles.primaryButton} data-admin-action type="submit" disabled={isSaving}>{isSaving ? 'Saving…' : 'Save supplier'}</button>
               </div>
             </form>
           </section>
+          </Modal>
         )}
       </main>
       <footer className={styles.footer}>Supplier data refreshes every 10 seconds.</footer>

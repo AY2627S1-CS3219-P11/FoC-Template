@@ -1,5 +1,5 @@
 export type FieldType = 'formData' | 'path' | 'query';
-export type APIService = 'supplier' | 'user';
+export type APIService = 'supplier' | 'user' | 'order' | 'credit';
 
 export type EndpointConfigEntry = {
     service: APIService;

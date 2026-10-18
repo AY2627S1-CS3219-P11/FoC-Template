@@ -5,6 +5,7 @@ import AdminManagerPortal from './pages/adminManagerPortal/AdminManagerPortal'
 import SignIn from './pages/authentication/signIn/SignIn'
 import SignUp from './pages/authentication/signUp/SignUp'
 import Home from './pages/home/Home'
+import Orders from './pages/orders/Orders'
 import Profile from './pages/profile/Profile'
 import Suppliers from './pages/suppliers/Suppliers'
 import { routes } from './routes'
@@ -19,6 +20,7 @@ const appRoutes: RouteObject[] = [
         element: <ProtectedLayout />,
         children: [
           { path: routes.home, element: <Home /> },
+          { path: routes.orders, element: <Orders /> },
           { path: routes.profile, element: <Profile /> },
           { path: routes.adminManagerPortal, element: <AdminManagerPortal /> },
           { path: routes.suppliers, element: <Suppliers /> },

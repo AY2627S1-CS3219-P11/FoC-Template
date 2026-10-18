@@ -167,48 +167,11 @@
   font-size: .8rem;
 }
 
-.roleControl {
-  margin: 34px 0 0;
-  padding: 0;
-  border: 0;
-}
-
-.roleControl legend {
-  margin-bottom: 11px;
-  color: #526257;
-  font-size: .75rem;
-  font-weight: 700;
-}
-
-.roleControl > div {
-  padding: 4px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4px;
-  background: #e8ede2;
-  border-radius: 6px;
-}
-
-.roleControl button {
-  min-height: 42px;
-  color: #526257;
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.roleControl button[aria-pressed='true'] {
-  color: #fff;
-  background: #286749;
-  box-shadow: 0 1px 3px rgb(31 48 35 / 18%);
-}
-
-.roleControl p {
-  min-height: 20px;
-  margin: 10px 0 0;
+.capabilities {
+  margin: 24px 0 0;
   color: #6c776d;
-  font-size: .75rem;
+  font-size: .8rem;
+  line-height: 1.6;
 }
 
 .accountLinks {
@@ -232,6 +195,17 @@
   color: #286749;
   font-size: 1.15rem;
 }
+
+.accountLinks a.adminLink {
+  margin-top: 10px;
+  padding-inline: 12px;
+  color: var(--admin-accent);
+  background: var(--admin-tint);
+  border: 1px solid #d9c4ed;
+  border-radius: 6px;
+}
+
+.accountLinks a.adminLink span:last-child { color: var(--admin-accent); }
 
 .signOutButton {
   min-height: 46px;
@@ -266,7 +240,9 @@
   }
 
   .navigation {
-    gap: 13px;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px 13px;
   }
 
   .navigation > a {

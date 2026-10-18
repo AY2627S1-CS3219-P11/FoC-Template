@@ -5,6 +5,8 @@ import { routes } from '../routes';
 const apiUrls: Record<APIService, string> = {
     supplier: import.meta.env.VITE_SUPPLIER_API_URL || '/supplier-api',
     user: import.meta.env.VITE_USER_API_URL || '/user-api',
+    order: import.meta.env.VITE_ORDER_API_URL || '/order-api',
+    credit: import.meta.env.VITE_CREDIT_API_URL || '/credit-api',
 };
 const PUBLIC_ROUTES = new Set<string>([routes.signIn]);
 type RequestDetails = {
@@ -14,6 +16,7 @@ type RequestDetails = {
 
 export type AuthenticatedRequestOptions = {
     onUnauthenticated?: () => void;
+    headers?: Record<string, string>;
 };
 
 const appendQueryValue = (query: URLSearchParams, field: string, value: unknown): void => {
@@ -130,9 +133,12 @@ const sendRequest = async <TResponse>({ init, url }: RequestDetails): Promise<TR
 
 export const makeCampusErrandsAPIRequest = async <TRequest extends APIRequest, TResponse>(
     request: TRequest,
-    config: EndpointConfigEntry
+    config: EndpointConfigEntry,
+    headers: Record<string, string> = {}
 ): Promise<TResponse> => {
-    return await sendRequest<TResponse>(buildRequest(request, config));
+    const details = buildRequest(request, config);
+    details.init.headers = { ...details.init.headers, ...headers };
+    return await sendRequest<TResponse>(details);
 };
 
 const redirectToSignIn = (): void => {
@@ -147,7 +153,7 @@ export const makeAuthenticatedCampusErrandsAPIRequest = async <TRequest extends 
     options: AuthenticatedRequestOptions = {}
 ): Promise<TResponse> => {
     try {
-        return await makeCampusErrandsAPIRequest<TRequest, TResponse>(request, config);
+        return await makeCampusErrandsAPIRequest<TRequest, TResponse>(request, config, options.headers);
     } catch (error) {
         if (error instanceof CampusErrandsAPIError && error.status === 401) {
             (options.onUnauthenticated ?? redirectToSignIn)();

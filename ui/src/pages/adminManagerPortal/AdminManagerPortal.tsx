@@ -108,7 +108,7 @@ const AdminManagerPortal = () => {
     <div className={styles.page}>
       <main className={styles.main}>
         <header className={styles.heading}>
-          <p className={styles.eyebrow}>Admin manager portal</p>
+          <p className="adminBadge">Admin manager only</p>
           <h1>Administrator access</h1>
           <p>Manage who can maintain supplier information while keeping requester and courier access unchanged.</p>
         </header>
@@ -155,14 +155,14 @@ const AdminManagerPortal = () => {
                 placeholder={content.placeholder}
                 onChange={(event) => setQuery(event.target.value)}
               />
-              <button type="submit" disabled={isLoading}>Search</button>
+              <button data-admin-action type="submit" disabled={isLoading}>Search</button>
             </div>
           </form>
 
           {error ? (
             <div className={styles.error} role="alert">
               <span>{error}</span>
-              <button type="button" onClick={() => void loadUsers(activeRole, appliedQuery)}>Try again</button>
+              <button data-admin-action type="button" onClick={() => void loadUsers(activeRole, appliedQuery)}>Try again</button>
             </div>
           ) : isLoading ? (
             <p className={styles.state} role="status">Loading {content.tab.toLowerCase()} accounts…</p>
@@ -180,6 +180,7 @@ const AdminManagerPortal = () => {
                   </div>
                   <span>{activeRole === 'admin' ? 'Administrator' : 'User'}</span>
                   <button
+                    data-admin-action
                     type="button"
                     onClick={() => void handleRoleChange(user)}
                     disabled={updatingId !== null}

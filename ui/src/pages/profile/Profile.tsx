@@ -9,7 +9,7 @@ import styles from './Profile.module.css'
 const Profile = () => {
   const api = useCampusErrandsAPI()
   const { showErrorToast, showSuccessToast } = useToast()
-  const { activeRole, profile, setProfile } = useUser()
+  const { profile, setProfile } = useUser()
   const [username, setUsername] = useState(profile.username)
   const [email, setEmail] = useState(profile.email)
   const [isSaving, setIsSaving] = useState(false)
@@ -59,7 +59,7 @@ const Profile = () => {
               <p className={styles.eyebrow}>Personal details</p>
               <h2 id="profile-details-title">How you appear</h2>
             </div>
-            <span>{activeRole === 'requester' ? 'Requester' : 'Courier'}</span>
+            <span>Requester & courier</span>
           </div>
 
           <form onSubmit={(event) => void handleSubmit(event)}>

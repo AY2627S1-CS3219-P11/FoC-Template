@@ -1,4 +1,3 @@
-export type ActiveRole = 'requester' | 'courier'
 export type UserRole = 'user' | 'admin' | 'admin_manager'
 
 export type CurrentSession = {
@@ -14,7 +13,5 @@ export type CurrentUserProfile = {
 export type UserContextValue = {
   session: CurrentSession
   profile: CurrentUserProfile
-  activeRole: ActiveRole
-  setActiveRole: (role: ActiveRole) => void
   setProfile: (profile: CurrentUserProfile) => void
 }
