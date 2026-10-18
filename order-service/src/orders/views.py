@@ -3,17 +3,19 @@ from typing import Annotated
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.dependencies import AuthenticatedUser, get_authenticated_user
 from common.db import get_session
 from common.gateway import get_internal_gateway_client
+from orders.creation import CreationConflict, create_order_idempotently, lookup_creation
 from orders.repository import (
     accept_order,
     cancel_order,
-    create_order,
     deliver_order,
+    dispute_order,
     get_assigned_orders,
     get_open_orders,
     get_order_by_id,
@@ -21,7 +23,13 @@ from orders.repository import (
     pickup_order,
     receive_order,
 )
-from orders.schemas import CreateOrderRequest, OrderResponse, SupplierSnapshot
+from orders.schemas import (
+    CreateOrderRequest,
+    DisputeOrderRequest,
+    OrderResponse,
+    ServerClockResponse,
+    SupplierSnapshot,
+)
 
 router = APIRouter (
     prefix="/orders",
@@ -30,6 +38,13 @@ router = APIRouter (
 )
 
 Session = Annotated[AsyncSession, Depends(get_session)]
+
+
+@router.get("/clock", response_model=ServerClockResponse)
+async def get_server_clock(user: AuthenticatedUser, session: Session):
+    """Clock sample for local countdowns; deadlines are always enforced server-side."""
+    now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+    return ServerClockResponse(server_time=now)
 
 
 @router.get("/open", response_model=list[OrderResponse])
@@ -112,9 +127,20 @@ async def deliver_order_endpoint(order_id: UUID, user: AuthenticatedUser, sessio
 # order creation
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_order_endpoint(payload: CreateOrderRequest, user: AuthenticatedUser, session: Session, 
-                                 client: Annotated[httpx.AsyncClient, Depends(get_internal_gateway_client)],): 
-    
+                                 client: Annotated[httpx.AsyncClient, Depends(get_internal_gateway_client)],
+                                 idempotency_key: Annotated[str, Header(min_length=1, max_length=128)],):
+    if not idempotency_key.strip():
+        raise HTTPException(status_code=422, detail="Idempotency-Key must not be blank")
     items = [item.model_dump(mode="json") for item in payload.items]
+    try:
+        existing = await lookup_creation(
+            session, user.user_id, idempotency_key, payload.supplier_id,
+            items, payload.pickup_notes, payload.credits,
+        )
+    except CreationConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
+    if existing is not None:
+        return existing
 
     try:
         response = await client.get("/supplier-api/suppliers")
@@ -165,16 +191,19 @@ async def create_order_endpoint(payload: CreateOrderRequest, user: Authenticated
             detail="Supplier service returned an invalid supplier.",
         ) from None
 
-    order = await create_order(
-        session=session,
-        requester_id=user.user_id,
-        supplier_id=payload.supplier_id,
-        supplier_snapshot=supplier_snapshot.model_dump(mode="json"),
-        items=items,
-        pickup_notes=payload.pickup_notes,
-        credits=payload.credits,
-    )
-    return order
+    try:
+        return await create_order_idempotently(
+            session=session,
+            requester_id=user.user_id,
+            idempotency_key=idempotency_key,
+            supplier_id=payload.supplier_id,
+            supplier_snapshot=supplier_snapshot.model_dump(mode="json"),
+            items=items,
+            pickup_notes=payload.pickup_notes,
+            credits=payload.credits,
+        )
+    except CreationConflict as error:
+        raise HTTPException(status_code=409, detail=str(error)) from None
 
 
 @router.patch("/{order_id}/cancel", response_model=OrderResponse)
@@ -188,6 +217,21 @@ async def cancel_order_endpoint(order_id: UUID, user: AuthenticatedUser, session
         if existing_order.requester_id != user.user_id:
             raise HTTPException(status_code=403, detail="Only the requester can update this order")
         raise HTTPException(status_code=409, detail="Order cannot be cancelled in its current state")
+    return order
+
+
+@router.patch("/{order_id}/dispute", response_model=OrderResponse)
+async def dispute_order_endpoint(
+    order_id: UUID, payload: DisputeOrderRequest, user: AuthenticatedUser, session: Session,
+):
+    order = await dispute_order(session, order_id, user.user_id, payload.reason)
+    if order is None:
+        existing_order = await get_order_by_id(session, order_id)
+        if existing_order is None:
+            raise HTTPException(status_code=404, detail="Order not found")
+        if user.user_id not in (existing_order.requester_id, existing_order.courier_id):
+            raise HTTPException(status_code=403, detail="Only order participants can dispute this order")
+        raise HTTPException(status_code=409, detail="Order cannot be disputed in its current state")
     return order
 
 

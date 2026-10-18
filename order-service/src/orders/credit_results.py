@@ -1,18 +1,19 @@
 """Apply Credit replies within the transaction owned by the message consumer.
 
 Each public handler owns one business operation. Shared helpers only handle
-request correlation, locking, reservation validation, and receipt recording.
+request correlation, locking, and receipt recording.
 """
 
-from datetime import timedelta
+from datetime import datetime
 from typing import assert_never
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orders.deadlines import init_window, open_window
 from orders.models import (
     CreditOperationOutcome,
-    CreditReservationResult,
     CreditResult,
     ReleaseCreditCommand,
     ReserveCreditCommand,
@@ -22,9 +23,11 @@ from orders.models import (
 from orders.orm_models import (
     CreditCommandOutbox,
     CreditCommandResult,
+    CreditStatus,
     ErrandRequest,
     Status,
 )
+from orders.repository import add_credit_command
 
 
 async def handle_reservation_result(
@@ -45,23 +48,47 @@ async def handle_reservation_result(
     if command.requester_id != order.requester_id or command.amount != order.credits:
         raise ValueError("Credit reservation does not match the order")
 
+    now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+    # Enforce the timeout even when a reply beats the periodic sweep.
+    if order.status == Status.INIT and order.created_at + init_window() <= now:
+        order.status = Status.EXPIRED
+        order.status_reason = (
+            "Credit reservation was not confirmed within the initialization deadline. "
+            "Any delayed reservation will be refunded automatically."
+        )
+        order.updated_at = now
+
     match result.outcome:
         case CreditOperationOutcome.REJECTED:
-            if order.status == Status.PENDING:
-                order.status = Status.REJECTED
-                order.updated_at = (
-                    await session.execute(select(func.clock_timestamp()))
-                ).scalar_one()
-        case CreditOperationOutcome.SUCCEEDED:
-            _validate_reservation(result, order)
-            # A late reply must not reopen an order that has moved on.
-            if order.status == Status.PENDING:
-                now = (
-                    await session.execute(select(func.clock_timestamp()))
-                ).scalar_one()
-                order.status = Status.OPEN
-                order.expires_at = now + timedelta(minutes=15)
+            if order.status in (Status.INIT, Status.EXPIRED):
+                order.credit_status = CreditStatus.REJECTED
+                if order.status == Status.INIT:
+                    order.status = Status.REJECTED
+                else:
+                    order.status_reason = "Initialization timed out; the reservation was rejected and no credits were reserved."
                 order.updated_at = now
+        case CreditOperationOutcome.SUCCEEDED:
+            if order.status == Status.INIT:
+                order.credit_status = CreditStatus.SUCCEEDED
+                order.status = Status.OPEN
+                order.expires_at = now + open_window()
+                order.updated_at = now
+            elif order.status == Status.EXPIRED:
+                # An unknown reservation is not safe to refund until success is
+                # confirmed. Record that confirmation and release atomically.
+                existing_release = await session.scalar(
+                    select(CreditCommandOutbox.id).where(
+                        CreditCommandOutbox.order_id == order.id,
+                        CreditCommandOutbox.routing_key == RoutingKey.CREDIT_RELEASE,
+                    )
+                )
+                if existing_release is None:
+                    add_credit_command(session, ReleaseCreditCommand(
+                        request_id=uuid4(), order_id=order.id,
+                    ))
+                    order.credit_status = CreditStatus.PENDING
+                    order.status_reason = "Initialization timed out; a delayed credit reservation is being refunded."
+                    order.updated_at = now
         case unexpected:
             assert_never(unexpected)
 
@@ -75,16 +102,20 @@ async def handle_release_result(session: AsyncSession, result: CreditResult) -> 
     if order is None:
         return
 
-    match result.outcome:
-        case CreditOperationOutcome.SUCCEEDED:
-            _validate_reservation(result, order)
-        case CreditOperationOutcome.REJECTED:
-            # Record the failure without changing the cancelled/expired order.
-            pass
-        case unexpected:
-            assert_never(unexpected)
+    # Only the active release may change this dimension. A late reservation
+    # reply must not overwrite it, and release never reopens the order.
+    if order.status in (Status.CANCELLED, Status.EXPIRED):
+        order.credit_status = CreditStatus(result.outcome.value.lower())
+        if order.status == Status.EXPIRED:
+            order.status_reason = (
+                "Order expired; reserved credits have been returned."
+                if result.outcome == CreditOperationOutcome.SUCCEEDED else
+                "Order expired, but the credit refund was rejected and requires investigation."
+            )
+        order.updated_at = (
+            await session.execute(select(func.clock_timestamp()))
+        ).scalar_one()
 
-    # Cancellation/expiry already changed the order. Release only settles credits.
     _record_reply(session, pending, result)
 
 
@@ -104,21 +135,35 @@ async def handle_transfer_result(session: AsyncSession, result: CreditResult) ->
 
     match result.outcome:
         case CreditOperationOutcome.SUCCEEDED:
-            reservation = _validate_reservation(result, order)
+            reservation = result.reservation
+            assert reservation is not None  # Validated when loading the order.
             if reservation.recipient_user_id != order.courier_id:
                 raise ValueError("Credit transfer contains an unexpected recipient")
-            if order.status == Status.RECEIVED:
-                order.status = Status.COMPLETED
-                order.updated_at = (
-                    await session.execute(select(func.clock_timestamp()))
-                ).scalar_one()
+            if order.status in (Status.RECEIVED, Status.DISPUTED):
+                now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+                _dispute_late_settlement(order, now)
+                order.credit_status = CreditStatus.SUCCEEDED
+                if order.status == Status.RECEIVED:
+                    order.status = Status.COMPLETED
+                    order.settlement_due_at = None
+                order.updated_at = now
         case CreditOperationOutcome.REJECTED:
-            # Record the failure, leaving the order awaiting settlement.
-            pass
+            if order.status in (Status.RECEIVED, Status.DISPUTED):
+                now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+                _dispute_late_settlement(order, now)
+                order.credit_status = CreditStatus.REJECTED
+                order.updated_at = now
         case unexpected:
             assert_never(unexpected)
 
     _record_reply(session, pending, result)
+
+
+def _dispute_late_settlement(order: ErrandRequest, now: datetime) -> None:
+    if (order.status == Status.RECEIVED and order.credit_status == CreditStatus.PENDING
+            and order.settlement_due_at is not None and order.settlement_due_at <= now):
+        order.status = Status.DISPUTED
+        order.status_reason = "The credit settlement deadline was exceeded; its eventual outcome is recorded separately."
 
 
 async def _load_stored_request(
@@ -153,7 +198,7 @@ async def _load_order_unless_duplicate(
     session: AsyncSession,
     result: CreditResult,
 ) -> ErrandRequest | None:
-    """Skip identical receipts, reject conflicting ones, otherwise lock the order.
+    """Skip identical receipts, otherwise lock the order and validate reservation details.
 
     Call only after verifying and locking the stored request. Its lock serializes
     replies for that request until the consumer commits the transaction.
@@ -172,22 +217,16 @@ async def _load_order_unless_duplicate(
     )
     if order is None:
         raise ValueError("Credit result references an unknown order")
+    if result.outcome == CreditOperationOutcome.SUCCEEDED:
+        reservation = result.reservation
+        if (
+            reservation is None
+            or reservation.order_id != order.id
+            or reservation.user_id != order.requester_id
+            or reservation.amount != order.credits
+        ):
+            raise ValueError("Credit result contains unexpected reservation details")
     return order
-
-
-def _validate_reservation(
-    result: CreditResult,
-    order: ErrandRequest,
-) -> CreditReservationResult:
-    reservation = result.reservation
-    if (
-        reservation is None
-        or reservation.order_id != order.id
-        or reservation.user_id != order.requester_id
-        or reservation.amount != order.credits
-    ):
-        raise ValueError("Credit result contains unexpected reservation details")
-    return reservation
 
 
 def _record_reply(

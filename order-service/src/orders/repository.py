@@ -1,18 +1,23 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from orders.deadlines import (
+    init_window,
+    progress_window,
+    settlement_window,
+)
 from orders.models import (
     CreditCommand,
     ReleaseCreditCommand,
-    ReserveCreditCommand,
     TransferCreditCommand,
 )
 from orders.orm_models import (
     CreditCommandOutbox,
     CreditCommandResult,
+    CreditStatus,
     ErrandRequest,
     Status,
 )
@@ -79,47 +84,14 @@ async def get_assigned_orders(session: AsyncSession, courier_id: UUID) -> list[E
     return list(result.scalars().all())
 
 
-async def create_order(session: AsyncSession, requester_id: UUID, supplier_id: UUID, supplier_snapshot: dict, 
-                       items: list[dict], pickup_notes: str | None, credits: int,) -> ErrandRequest:
-    now = await session.scalar(select(func.clock_timestamp()))
-
-    order = ErrandRequest(
-        id=uuid4(),
-        requester_id=requester_id,
-        supplier_id=supplier_id,
-        supplier_snapshot=supplier_snapshot,
-        items=items,
-        pickup_notes=pickup_notes,
-        credits=credits,
-        status=Status.PENDING,
-        courier_id=None,
-        created_at=now,
-        expires_at=now + timedelta(minutes=15),
-        updated_at=now,)
-    
-    session.add(order)
-    await session.flush()
-    add_credit_command(session, ReserveCreditCommand(
-        request_id=uuid4(), order_id=order.id, requester_id=requester_id, amount=credits,))
-    
-    await session.commit()
-    await session.refresh(order)
-    return order
-
-
 async def accept_order(session: AsyncSession, order_id: UUID, 
                         courier_id: UUID,) -> ErrandRequest | None:
     
-    locked_id = await session.scalar(
-        select(ErrandRequest.id)
-        .where(ErrandRequest.id == order_id)
-        .with_for_update())
-    
-    if locked_id is None:
+    if not await _lock_order(session, order_id):
         await session.commit()
         return None
     
-    now = func.statement_timestamp()
+    now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
 
     stmt = (update(ErrandRequest)
             .where(ErrandRequest.id == order_id,
@@ -130,6 +102,7 @@ async def accept_order(session: AsyncSession, order_id: UUID,
             .values(status=Status.ACCEPTED,
                     courier_id=courier_id,
                     accepted_at=now,
+                    progress_due_at=now + progress_window(),
                     updated_at=now,)
             .returning(ErrandRequest))
 
@@ -141,16 +114,30 @@ async def accept_order(session: AsyncSession, order_id: UUID,
     return order
 
 
+async def _lock_order(session: AsyncSession, order_id: UUID) -> bool:
+    """Acquire the row lock before sampling the clock for deadline checks."""
+    return await session.scalar(
+        select(ErrandRequest.id)
+        .where(ErrandRequest.id == order_id)
+        .with_for_update()
+    ) is not None
+
+
 async def pickup_order(session: AsyncSession, order_id: UUID,
                         courier_id: UUID,) -> ErrandRequest | None:
-    now = datetime.now(timezone.utc)
+    if not await _lock_order(session, order_id):
+        await session.commit()
+        return None
+    now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
 
     stmt = (
         update(ErrandRequest)
         .where(ErrandRequest.id == order_id,
                ErrandRequest.status == Status.ACCEPTED,
-               ErrandRequest.courier_id == courier_id,)
+               ErrandRequest.courier_id == courier_id,
+               ErrandRequest.progress_due_at > now,)
         .values(status=Status.PICKED_UP,
+                progress_due_at=now + progress_window(),
                 updated_at=now,)
         .returning(ErrandRequest))
 
@@ -164,16 +151,21 @@ async def pickup_order(session: AsyncSession, order_id: UUID,
 
 async def deliver_order(session: AsyncSession, order_id: UUID,
                          courier_id: UUID,) -> ErrandRequest | None:
-    now = datetime.now(timezone.utc)
+    if not await _lock_order(session, order_id):
+        await session.commit()
+        return None
+    now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
 
     stmt = (
         update(ErrandRequest)
         .where(
             ErrandRequest.id == order_id,
             ErrandRequest.status == Status.PICKED_UP,
-            ErrandRequest.courier_id == courier_id,)
+            ErrandRequest.courier_id == courier_id,
+            ErrandRequest.progress_due_at > now,)
         .values(
             status=Status.DELIVERED,
+            progress_due_at=now + progress_window(),
             updated_at=now,)
         .returning(ErrandRequest))
 
@@ -186,13 +178,13 @@ async def deliver_order(session: AsyncSession, order_id: UUID,
 
 
 async def cancel_order(session: AsyncSession, order_id: UUID, requester_id: UUID,) -> ErrandRequest | None:
-    now = datetime.now(timezone.utc)
+    now = func.clock_timestamp()
     stmt = (
         update(ErrandRequest)
         .where(ErrandRequest.id == order_id,
                ErrandRequest.requester_id == requester_id,
                ErrandRequest.status == Status.OPEN,)
-        .values(status=Status.CANCELLED, updated_at=now)
+        .values(status=Status.CANCELLED, credit_status=CreditStatus.PENDING, updated_at=now)
         .returning(ErrandRequest))
     
     result = await session.execute(stmt)
@@ -205,20 +197,26 @@ async def cancel_order(session: AsyncSession, order_id: UUID, requester_id: UUID
 
 
 async def receive_order(session: AsyncSession, order_id: UUID, requester_id: UUID,) -> ErrandRequest | None:
-    now = datetime.now(timezone.utc)
+    if not await _lock_order(session, order_id):
+        await session.commit()
+        return None
+    now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
 
     stmt = (
         update(ErrandRequest)
         .where(ErrandRequest.id == order_id,
                ErrandRequest.requester_id == requester_id,
                ErrandRequest.status == Status.DELIVERED,
-               ErrandRequest.courier_id.is_not(None),)
-        .values(status=Status.RECEIVED, updated_at=now)
+               ErrandRequest.courier_id.is_not(None),
+               ErrandRequest.progress_due_at > now,)
+        .values(status=Status.RECEIVED, credit_status=CreditStatus.PENDING,
+                progress_due_at=None, settlement_due_at=now + settlement_window(), updated_at=now)
         .returning(ErrandRequest))
     
     result = await session.execute(stmt)
     order = result.scalar_one_or_none()
     if order is not None:
+        assert order.courier_id is not None  # Required by the UPDATE predicate.
         add_credit_command(session, TransferCreditCommand(
             request_id=uuid4(), order_id=order.id, courier_id=order.courier_id,))
 
@@ -234,12 +232,86 @@ def add_credit_command(session: AsyncSession, command: CreditCommand) -> None:
         payload=command.model_dump(mode="json"),))
 
 
+async def dispute_order(
+    session: AsyncSession, order_id: UUID, actor_id: UUID, reason: str,
+) -> ErrandRequest | None:
+    """Freeze fulfilment or a rejected settlement; retries preserve the first reason."""
+    order = await session.scalar(
+        select(ErrandRequest).where(ErrandRequest.id == order_id)
+        .with_for_update().execution_options(populate_existing=True)
+    )
+    if order is None or actor_id not in (order.requester_id, order.courier_id):
+        await session.commit()
+        return None
+    if order.status == Status.DISPUTED:
+        await session.commit()
+        return order
+    eligible = order.status in (Status.ACCEPTED, Status.PICKED_UP, Status.DELIVERED)
+    eligible |= order.status == Status.RECEIVED and order.credit_status == CreditStatus.REJECTED
+    if not eligible:
+        await session.commit()
+        return None
+    order.status = Status.DISPUTED
+    order.status_reason = reason
+    order.updated_at = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+    await session.commit()
+    return order
+
+
+async def expire_initializing_orders(session: AsyncSession) -> list[UUID]:
+    """Stop exposing stale requests; reservation replay continues until reconciled.
+
+    Do not release yet: Credit may not have created the reservation. A late
+    reservation success queues its compensating release in credit_results.
+    """
+    result = await session.execute(
+        update(ErrandRequest)
+        .where(ErrandRequest.status == Status.INIT,
+               ErrandRequest.created_at + init_window() <= func.clock_timestamp())
+        .values(status=Status.EXPIRED,
+                status_reason="Credit reservation was not confirmed within the initialization deadline. "
+                              "Any delayed reservation will be refunded automatically.",
+                updated_at=func.clock_timestamp())
+        .returning(ErrandRequest.id)
+    )
+    expired_ids = list(result.scalars())
+    await session.commit()
+    return expired_ids
+
+
+async def dispute_overdue_orders(session: AsyncSession) -> list[UUID]:
+    """Freeze stalled fulfilment or settlement without cancelling credit commands.
+
+    PostgreSQL rechecks predicates after competing updates. A delayed settlement
+    result may still update credit_status, but cannot exit DISPUTED.
+    """
+    result = await session.execute(
+        update(ErrandRequest)
+        .where(or_(
+            and_(ErrandRequest.status.in_(
+                     (Status.ACCEPTED, Status.PICKED_UP, Status.DELIVERED)),
+                 ErrandRequest.progress_due_at <= func.clock_timestamp()),
+            and_(ErrandRequest.status == Status.RECEIVED,
+                 ErrandRequest.credit_status == CreditStatus.PENDING,
+                 ErrandRequest.settlement_due_at <= func.clock_timestamp()),
+        ))
+        .values(status=Status.DISPUTED,
+                status_reason="The deadline for fulfilment or credit settlement was exceeded.",
+                updated_at=func.clock_timestamp())
+        .returning(ErrandRequest.id)
+    )
+    disputed_ids = list(result.scalars())
+    await session.commit()
+    return disputed_ids
+
+
 async def expire_orders(session: AsyncSession) -> list[UUID]:
     result = await session.execute(
         update(ErrandRequest)
         .where(ErrandRequest.status == Status.OPEN,
                ErrandRequest.expires_at <= func.clock_timestamp())
-        .values(status=Status.EXPIRED, updated_at=func.clock_timestamp())
+        .values(status=Status.EXPIRED, credit_status=CreditStatus.PENDING,
+                updated_at=func.clock_timestamp())
         .returning(ErrandRequest.id))
 
     expired_ids = list(result.scalars())

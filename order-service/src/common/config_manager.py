@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     rabbitmq_url: SecretStr | None = None
     internal_gateway_url: str | None = None
     credit_result_timeout_seconds: int = Field(default=60, ge=5)
+    order_init_timeout_seconds: int = Field(default=60, ge=1)
+    order_settlement_timeout_seconds: int = Field(default=900, ge=1)
+    order_open_timeout_seconds: int = Field(default=900, ge=1)
+    order_progress_timeout_seconds: int = Field(default=900, ge=1)
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",
