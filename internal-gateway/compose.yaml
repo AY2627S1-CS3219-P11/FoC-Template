@@ -5,6 +5,7 @@ services:
     environment:
       USER_SERVICE_UPSTREAM: ${USER_SERVICE_UPSTREAM:-http://user-service:5005}
       SUPPLIER_SERVICE_UPSTREAM: ${SUPPLIER_SERVICE_UPSTREAM:-http://supplier-service:3001}
+      ORDER_SERVICE_UPSTREAM: ${ORDER_SERVICE_UPSTREAM:-http://order-service:3002}
       CREDIT_SERVICE_UPSTREAM: ${CREDIT_SERVICE_UPSTREAM:-http://credit-service:3002}
       NGINX_DNS_RESOLVER: ${NGINX_DNS_RESOLVER:-127.0.0.11}
     # Internal only: callers use the shared Docker network, not a host port.
