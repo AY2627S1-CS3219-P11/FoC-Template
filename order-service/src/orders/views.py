@@ -22,6 +22,7 @@ from orders.repository import (
     get_requested_orders,
     pickup_order,
     receive_order,
+    get_order_audit_logs
 )
 from orders.schemas import (
     CreateOrderRequest,
@@ -29,6 +30,7 @@ from orders.schemas import (
     OrderResponse,
     ServerClockResponse,
     SupplierSnapshot,
+    OrderAuditLogResponse
 )
 
 router = APIRouter (
@@ -241,3 +243,21 @@ async def receive_order_endpoint(order_id: UUID, user: AuthenticatedUser, sessio
             raise HTTPException(status_code=403, detail="Only the requester can update this order")
         raise HTTPException(status_code=409, detail="Order cannot be marked as received in its current state")
     return order
+
+
+@router.get("/{order_id}/audit-logs", response_model=list[OrderAuditLogResponse])
+async def get_order_audit_logs_endpoint(
+        order_id: UUID, user: AuthenticatedUser, session: Session,
+):
+    order = await get_order_by_id(session, order_id)
+
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    if user.role not in {"admin", "admin_manager"} and user.user_id not in (order.requester_id, order.courier_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Not allowed to view this order's audit logs"
+        )
+
+    return await get_order_audit_logs(session, order_id)
