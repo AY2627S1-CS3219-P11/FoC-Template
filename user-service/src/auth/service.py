@@ -23,6 +23,7 @@ from auth.models import (
     CurrentUserResponse,
     ManagedUserRole,
     ManagedUserResponse,
+    ParticipantResponse,
     SignInRequest,
     SignUpRequest,
     UpdateCurrentUserRequest,
@@ -36,6 +37,7 @@ from auth.repository import (
     create_user,
     delete_authentication_session,
     find_managed_users,
+    find_participant_profiles,
     find_user_by_email,
     find_user_profile_by_id,
     find_user_by_username,
@@ -161,6 +163,13 @@ async def get_current_user_profile(user_id: UUID, session: AsyncSession) -> Curr
     if profile is None:
         raise jwt.InvalidTokenError("The authenticated user no longer exists.")
     return profile
+
+
+async def get_participant_profiles(
+    user_ids: list[UUID],
+    session: AsyncSession,
+) -> list[ParticipantResponse]:
+    return await find_participant_profiles(session, user_ids)
 
 
 async def get_users_for_access_management(

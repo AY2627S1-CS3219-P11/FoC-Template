@@ -128,6 +128,17 @@ class ManagedUserResponse(BaseModel):
     role: ManagedUserRole
 
 
+class ParticipantLookupRequest(BaseModel):
+    # Explicit IDs only: this is not a searchable user directory.
+    user_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
+class ParticipantResponse(BaseModel):
+    user_id: UUID
+    username: str
+    email: EmailStr
+
+
 class UpdateUserRoleRequest(BaseModel):
     role: ManagedUserRole
 

@@ -59,3 +59,12 @@ async def get_admin_manager_user(user: AuthenticatedUser) -> UserRoleResponse:
 
 
 AdminManagerUser = Annotated[UserRoleResponse, Depends(get_admin_manager_user)]
+
+
+async def get_admin_user(user: AuthenticatedUser) -> UserRoleResponse:
+    if user.role not in (UserRole.ADMIN, UserRole.ADMIN_MANAGER):
+        raise HTTPException(status_code=403, detail="Administrator access required.")
+    return user
+
+
+AdminUser = Annotated[UserRoleResponse, Depends(get_admin_user)]

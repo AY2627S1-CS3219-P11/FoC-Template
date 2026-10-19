@@ -12,6 +12,7 @@ from auth.models import (
     ManagedUserRole,
     ManagedUserResponse,
     MessageType,
+    ParticipantResponse,
     UserRecord,
     UserRole,
     UserRoleResponse,
@@ -144,6 +145,22 @@ async def find_user_role_by_id(session: AsyncSession, user_id: UUID,) -> UserRol
         return None
 
     return UserRoleResponse(user_id=user.user_id, role=user.user_role)
+
+
+async def find_participant_profiles(
+    session: AsyncSession,
+    user_ids: list[UUID],
+) -> list[ParticipantResponse]:
+    # Select only public identity fields; include participants of every role.
+    result = await session.execute(
+        select(User.user_id, User.username, User.user_email).where(
+            User.user_id.in_(set(user_ids))
+        ).order_by(User.user_id)
+    )
+    return [
+        ParticipantResponse(user_id=user.user_id, username=user.username, email=user.user_email)
+        for user in result.all()
+    ]
 
 
 async def find_managed_users(
