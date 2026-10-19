@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { CampusErrandsAPIError } from '../../api/models'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useToast } from '../../components/toast/useToast'
@@ -56,6 +56,8 @@ const Suppliers = () => {
   const { showErrorToast, showSuccessToast } = useToast()
   const { session } = useUser()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const loading = useRef(false)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<'all' | SupplierCategory>('all')
   const [isLoading, setIsLoading] = useState(true)
@@ -66,15 +68,17 @@ const Suppliers = () => {
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null)
 
   const loadSuppliers = useCallback(async () => {
+    if (loading.current) return
+    loading.current = true
     try {
       const currentSuppliers = await api.supplier.list()
       setSuppliers(currentSuppliers)
+      setHasLoaded(true)
       setError(null)
-    } catch (requestError) {
-      setError(requestError instanceof CampusErrandsAPIError
-        ? requestError.message
-        : 'Unable to load suppliers. Please try again.')
+    } catch {
+      setError('Suppliers are temporarily unavailable. Please try again shortly.')
     } finally {
+      loading.current = false
       setIsLoading(false)
     }
   }, [api])
@@ -170,7 +174,7 @@ const Suppliers = () => {
             <h1>Around campus</h1>
             <p>Browse active suppliers and find the place that fits your next errand.</p>
           </div>
-          {isAdmin && <div className={styles.adminTools}><span className="adminBadge">Admin only</span><button className={styles.primaryButton} data-admin-action type="button" aria-haspopup="dialog" onClick={() => openEditor('new')}>Add supplier</button></div>}
+          {isAdmin && <div className={styles.adminTools}><span className="adminBadge">Admin only</span><button className={styles.primaryButton} data-admin-action type="button" disabled={!!error || isLoading} aria-haspopup="dialog" onClick={() => openEditor('new')}>Add supplier</button></div>}
         </div>
 
         <section className={styles.filters} aria-label="Filter suppliers">
@@ -185,12 +189,12 @@ const Suppliers = () => {
               {CATEGORIES.map((item) => <option key={item}>{item}</option>)}
             </select>
           </label>
-          <span>{visibleSuppliers.length} {visibleSuppliers.length === 1 ? 'place' : 'places'}</span>
+          <span>{!hasLoaded ? '— places' : `${visibleSuppliers.length} ${visibleSuppliers.length === 1 ? 'place' : 'places'}${error ? ' · last loaded' : ''}`}</span>
         </section>
 
         {error && (
           <div className={styles.error} role="alert">
-            <span>{error}</span>
+            <span>{error}{hasLoaded && ' Previously loaded suppliers are shown below and may be out of date.'}</span>
             <button type="button" onClick={() => {
               setIsLoading(true)
               void loadSuppliers()
@@ -199,7 +203,7 @@ const Suppliers = () => {
         )}
         {isLoading ? (
           <p className={styles.state} role="status">Loading suppliers…</p>
-        ) : visibleSuppliers.length === 0 ? (
+        ) : error && (!hasLoaded || visibleSuppliers.length === 0) ? null : visibleSuppliers.length === 0 ? (
           <p className={styles.state}>No active suppliers match these filters.</p>
         ) : (
           <div className={styles.list} aria-live="polite">
@@ -218,8 +222,8 @@ const Suppliers = () => {
                 {isAdmin && (
                   <div className={styles.actions}>
                     <span className="adminBadge">Admin</span>
-                    <button data-admin-action type="button" aria-haspopup="dialog" onClick={() => openEditor(supplier)}>Edit</button>
-                    <button data-admin-action type="button" onClick={() => void handleDeactivate(supplier)} disabled={deactivatingId === supplier.id}>
+                    <button data-admin-action type="button" disabled={!!error} aria-haspopup="dialog" onClick={() => openEditor(supplier)}>Edit</button>
+                    <button data-admin-action type="button" onClick={() => void handleDeactivate(supplier)} disabled={!!error || deactivatingId === supplier.id}>
                       {deactivatingId === supplier.id ? 'Deactivating…' : 'Deactivate'}
                     </button>
                   </div>

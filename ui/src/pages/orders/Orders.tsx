@@ -8,6 +8,15 @@ import { Modal } from '../../components/modal/Modal'
 import styles from './Orders.module.css'
 
 type View = 'open' | 'requested' | 'assigned'
+type Resource = View | 'credits' | 'suppliers'
+type ResourceState = { loaded: boolean; error: boolean }
+const initialResourceState: Record<Resource, ResourceState> = {
+  open: { loaded: false, error: false },
+  requested: { loaded: false, error: false },
+  assigned: { loaded: false, error: false },
+  credits: { loaded: false, error: false },
+  suppliers: { loaded: false, error: false },
+}
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.'
 
 const Orders = () => {
@@ -18,8 +27,7 @@ const Orders = () => {
   const [orders, setOrders] = useState<Record<View, Order[]>>({ open: [], requested: [], assigned: [] })
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [balance, setBalance] = useState<CreditBalance | null>(null)
-  const [loadError, setLoadError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [resources, setResources] = useState(initialResourceState)
   const [now, setNow] = useState(() => Date.now())
   const [formOpen, setFormOpen] = useState(false)
   const [supplierId, setSupplierId] = useState('')
@@ -45,29 +53,32 @@ const Orders = () => {
     if (refreshing.current) return
     refreshing.current = true
     try {
-      const resources = {
-        'Open requests': async () => {
+      const loaders: Record<Resource, () => Promise<void>> = {
+        open: async () => {
           const open = await api.order.open()
           setOrders((current) => ({ ...current, open }))
         },
-        'My requests': async () => {
+        requested: async () => {
           const requested = await api.order.requested()
           setOrders((current) => ({ ...current, requested }))
         },
-        'My deliveries': async () => {
+        assigned: async () => {
           const assigned = await api.order.assigned()
           setOrders((current) => ({ ...current, assigned }))
         },
-        Credits: async () => { setBalance(await api.credit.current()) },
-        Suppliers: async () => { setSuppliers(await api.supplier.list()) },
+        credits: async () => { setBalance(await api.credit.current()) },
+        suppliers: async () => { setSuppliers(await api.supplier.list()) },
       }
-      const results = await Promise.allSettled(Object.values(resources).map((load) => load()))
-      const failures = results.flatMap((result, index) => result.status === 'rejected'
-        ? [`${Object.keys(resources)[index]}: ${errorMessage(result.reason)}`] : [])
-      setLoadError(failures.length ? `Unable to refresh ${failures.join('; ')}` : '')
+      await Promise.all((Object.entries(loaders) as [Resource, () => Promise<void>][]).map(async ([key, load]) => {
+        try {
+          await load()
+          setResources((current) => ({ ...current, [key]: { loaded: true, error: false } }))
+        } catch {
+          setResources((current) => ({ ...current, [key]: { ...current[key], error: true } }))
+        }
+      }))
     } finally {
       refreshing.current = false
-      setLoading(false)
     }
   }, [api])
 
@@ -85,6 +96,10 @@ const Orders = () => {
     const payload = JSON.stringify(request)
     const retry = creationAttempt?.payload === payload
     if (mutationLock.current) return
+    if (resources.suppliers.error || resources.credits.error || resources.open.error) {
+      showErrorToast('We can’t submit your request until suppliers, credits, and orders are available again. Your draft has been kept.')
+      return
+    }
     if ((!retry && !suppliers.some((supplier) => supplier.id === supplierId)) || !delivery.trim() || items.some((item) => !item.name.trim() || !Number.isSafeInteger(item.quantity) || item.quantity < 1) || !Number.isSafeInteger(amount) || amount < 1 || (!retry && (!balance || amount > balance.available_credits))) {
       showErrorToast('Choose an active supplier, complete the delivery details, and offer whole credits within your available balance.')
       return
@@ -133,6 +148,10 @@ const Orders = () => {
     finally { await refresh(); mutationLock.current = false; setBusy(null) }
   }
 
+  const loadError = resources[view].error
+  const loadingOrders = !resources[view].loaded && !loadError
+  const creationUnavailable = resources.suppliers.error || resources.credits.error || resources.open.error
+
   const visibleOrders = view === 'open'
     ? orders.open.filter((order) => matchesOpenFilters(order, now, location, minCredits, maxCredits))
     : filterPersonalOrders(orders[view], statusFilter, sort)
@@ -143,18 +162,24 @@ const Orders = () => {
       <button className={styles.primary} onClick={() => setFormOpen(true)} aria-haspopup="dialog" aria-controls="new-request">+ New request</button>
     </header>
     <section className={styles.wallet} aria-label="Credit balance">
-      <div><span>Available credits</span><strong>{balance?.available_credits ?? '—'}</strong></div>
-      <div><span>Reserved credits</span><strong>{balance?.reserved_credits ?? '—'}</strong></div>
-      <p>Credits are reserved for your requests, returned on cancellation or expiry, and awarded to the courier after you confirm receipt.</p>
+      <div><span>Available credits</span><strong>{resources.credits.error ? '—' : balance?.available_credits ?? '—'}</strong></div>
+      <div><span>Reserved credits</span><strong>{resources.credits.error ? '—' : balance?.reserved_credits ?? '—'}</strong></div>
+      {resources.credits.error
+        ? <div className={styles.notice} role="status"><strong>Credit balance is temporarily unavailable</strong><p>You can still browse and manage orders. New requests need a current balance.</p><button onClick={() => void refresh()}>Try again</button></div>
+        : !resources.credits.loaded ? <p role="status">Loading your credit balance…</p>
+        : <p>Credits are reserved for your requests, returned on cancellation or expiry, and awarded to the courier after you confirm receipt.</p>}
     </section>
-    {loadError && <div role="alert" className={styles.error}>{loadError} <button onClick={() => void refresh()}>Retry</button><p>Displayed information may be out of date.</p></div>}
     {formOpen && <Modal id="new-request" labelledBy="request-title" onClose={() => setFormOpen(false)} busy={busy === 'create'}><section className={styles.formPanel}>
       <div className={styles.formHeading}><h2 id="request-title">What do you need picked up?</h2><button type="button" disabled={busy === 'create'} onClick={() => setFormOpen(false)}>Close</button></div>
       <p>Only active suppliers are available. Open requests expire after 15 minutes.</p>
-      {!loading && suppliers.length === 0 && <p role="status">No active suppliers are available. If loading failed, use Retry above.</p>}
+      {resources.suppliers.error && <div className={styles.notice} role="status"><strong>Suppliers are temporarily unavailable</strong><p>Your draft is safe. Please try again before submitting a new request.</p><button onClick={() => void refresh()}>Try again</button></div>}
+      {resources.credits.error && <div className={styles.notice} role="status"><p>We can’t check your credit balance right now. Please try again before submitting.</p><button onClick={() => void refresh()}>Retry balance</button></div>}
+      {resources.open.error && <div className={styles.notice} role="status"><p>Orders are temporarily unavailable. Your draft is safe; please try again shortly.</p><button onClick={() => void refresh()}>Retry orders</button></div>}
+      {!resources.suppliers.loaded && !resources.suppliers.error && <p role="status">Loading suppliers…</p>}
+      {resources.suppliers.loaded && !resources.suppliers.error && suppliers.length === 0 && <p role="status">No active suppliers are available right now.</p>}
       <form onSubmit={(event) => void submit(event)}>
         <div className={styles.formGrid}>
-          <label>Supplier<select required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Choose an active supplier</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.building}, floor {supplier.floor}</option>)}</select></label>
+          <label>Supplier<select required disabled={resources.suppliers.error || !resources.suppliers.loaded} value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Choose an active supplier</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.building}, floor {supplier.floor}</option>)}</select></label>
           <label>Delivery location<input required maxLength={500} value={delivery} onChange={(event) => setDelivery(event.target.value)} placeholder="Building, floor and meeting point" /></label>
         </div>
         <fieldset><legend>Items for pickup</legend>{items.map((item, index) => <div className={styles.itemRow} key={index}>
@@ -164,9 +189,9 @@ const Orders = () => {
         </div>)}<button type="button" onClick={() => setItems([...items, { name: '', quantity: 1 }])}>+ Add item</button></fieldset>
         <div className={styles.formGrid}>
           <label>Pickup notes (optional)<textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Special instructions, substitutions, or how to collect" /></label>
-          <label>Credits to award<input required type="number" min="1" step="1" max={creationAttempt ? undefined : balance?.available_credits ?? 0} value={credits} onChange={(event) => setCredits(event.target.value)} /><small>At least 1 whole credit. Available: {balance?.available_credits ?? 'unavailable'}.</small></label>
+          <label>Credits to award<input required type="number" min="1" step="1" max={creationAttempt || resources.credits.error ? undefined : balance?.available_credits ?? 0} value={credits} onChange={(event) => setCredits(event.target.value)} /><small>At least 1 whole credit. Available: {resources.credits.error ? 'unavailable' : balance?.available_credits ?? 'loading…'}.</small></label>
         </div>
-        <button className={styles.primary} disabled={busy !== null || (!creationAttempt && (!balance || balance.available_credits < 1 || suppliers.length === 0)) || !!loadError} type="submit">{busy === 'create' ? 'Submitting…' : 'Submit request'}</button>
+        <button className={styles.primary} disabled={busy !== null || (!creationAttempt && (!balance || balance.available_credits < 1 || suppliers.length === 0)) || creationUnavailable} type="submit">{busy === 'create' ? 'Submitting…' : 'Submit request'}</button>
       </form>
     </section></Modal>}
     {reportOrder && <Modal id="report-problem" labelledBy="report-title" onClose={() => setReportOrder(null)} busy={busy !== null}><section className={styles.formPanel}>
@@ -196,7 +221,8 @@ const Orders = () => {
       <label>Sort by<select value={sort} onChange={(event) => setSort(event.target.value as OrderSort)}><option value="attention">Needs attention first</option><option value="newest">Newest created</option><option value="oldest">Oldest created</option></select></label>
     </section>}
     <div className={styles.listHeading}><h2>{view === 'open' ? 'Find a favour along your way' : view === 'requested' ? 'Your requests' : 'Your deliveries'}</h2><span>Updates every 5 seconds</span></div>
-    {loading ? <p role="status">Loading orders…</p> : visibleOrders.length === 0 ? <div className={styles.empty}><h3>{view === 'open' ? 'No open requests right now' : 'No matching orders'}</h3><p>{view === 'open' ? 'Try adjusting your filters or check back soon.' : 'Try another status filter, or request or accept an errand.'}</p></div> : <div className={styles.grid}>{visibleOrders.map((order) => {
+    {loadError && <div role="status" className={styles.notice}><strong>{view === 'open' ? 'Open requests' : view === 'requested' ? 'Your requests' : 'Your deliveries'} are temporarily unavailable</strong><p>{resources[view].loaded ? 'Showing the last loaded orders. They may be out of date; actions will return when we reconnect.' : 'We couldn’t load this list. Please try again shortly.'} Other sections are still available.</p><button onClick={() => void refresh()}>Try again</button></div>}
+    {loadingOrders ? <p role="status">Loading orders…</p> : loadError && visibleOrders.length === 0 ? null : visibleOrders.length === 0 ? <div className={styles.empty}><h3>{view === 'open' ? 'No open requests right now' : 'No matching orders'}</h3><p>{view === 'open' ? 'Try adjusting your filters or check back soon.' : 'Try another status filter, or request or accept an errand.'}</p></div> : <div className={styles.grid}>{visibleOrders.map((order) => {
       const seconds = remainingSeconds(order, now)
       const unaccepted = isUnaccepted(order)
       const expired = unaccepted && seconds === 0

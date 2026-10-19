@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { routes } from '../../routes'
-import { useToast } from '../toast/useToast'
 import { useUser } from '../user/UserContext'
 import styles from './AppHeader.module.css'
 
@@ -10,10 +9,10 @@ const AppHeader = () => {
   const api = useCampusErrandsAPI()
   const location = useLocation()
   const navigate = useNavigate()
-  const { showErrorToast } = useToast()
   const { profile, session } = useUser()
   const [isOpen, setIsOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState('')
   const dialogRef = useRef<HTMLDialogElement>(null)
 
   useEffect(() => {
@@ -31,12 +30,14 @@ const AppHeader = () => {
   }, [isOpen])
 
   const handleSignOut = async () => {
+    if (isSigningOut) return
     setIsSigningOut(true)
+    setSignOutError('')
     try {
       await api.user.authentication.signOut()
       navigate(routes.signIn, { replace: true })
     } catch {
-      showErrorToast('Unable to sign out. Please try again.')
+      setSignOutError('We couldn’t reach account services to sign you out. You’re still signed in. Please try again shortly.')
       setIsSigningOut(false)
     }
   }
@@ -107,9 +108,12 @@ const AppHeader = () => {
             )}
           </nav>
 
+          <div className={styles.signOutArea}>
+          {signOutError && <p className={styles.signOutError} role="alert">{signOutError}</p>}
           <button className={styles.signOutButton} type="button" onClick={() => void handleSignOut()} disabled={isSigningOut}>
             {isSigningOut ? 'Signing out…' : 'Sign out'}
           </button>
+          </div>
         </div>
       </dialog>
     </header>

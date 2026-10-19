@@ -207,9 +207,25 @@
 
 .accountLinks a.adminLink span:last-child { color: var(--admin-accent); }
 
-.signOutButton {
-  min-height: 46px;
+.signOutArea {
   margin-top: auto;
+  padding-top: 24px;
+}
+
+.signOutError {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  color: #794b30;
+  background: #f7eee0;
+  border: 1px solid #dfceb4;
+  border-radius: 5px;
+  font-size: .85rem;
+  line-height: 1.55;
+}
+
+.signOutButton {
+  width: 100%;
+  min-height: 46px;
   color: #286749;
   background: transparent;
   border: 1px solid #bfcab7;
