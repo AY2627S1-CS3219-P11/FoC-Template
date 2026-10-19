@@ -13,7 +13,22 @@ from credit.models import (
     CreditResponse,
     UserCreated,
 )
-from credit.orm_models import Credit, CreditAuditLog, CreditOutbox, CreditReservation
+from credit.orm_models import (
+    Credit,
+    CreditAuditLog,
+    CreditOrderGuard,
+    CreditOutbox,
+    CreditReservation,
+)
+
+
+async def lock_credit_order(session: AsyncSession, order_id: UUID) -> CreditOrderGuard:
+    await session.execute(insert(CreditOrderGuard).values(
+        order_id=order_id,
+    ).on_conflict_do_nothing(index_elements=[CreditOrderGuard.order_id]))
+    return await session.scalar(select(CreditOrderGuard).where(
+        CreditOrderGuard.order_id == order_id,
+    ).with_for_update().execution_options(populate_existing=True))
 
 
 async def claim_credit_command(session: AsyncSession, command: CreditCommand) -> bool:

@@ -11,6 +11,8 @@ from credit.exceptions import (
     CreditRequestConflictError,
     CreditReservationConflictError,
     CreditReservationNotFoundError,
+    CreditsAlreadyReleasedError,
+    CreditsAlreadyTransferredError,
     InsufficientCreditsError,
 )
 from credit.models import (
@@ -31,6 +33,7 @@ from credit.models import (
     UserCreated,
 )
 from credit.orm_models import Credit, CreditReservation
+from credit.repair import fund_settlement_shortfall
 from credit.repository import (
     claim_credit_command,
     find_credit_account_by_user_id,
@@ -41,6 +44,7 @@ from credit.repository import (
     insert_credit_account,
     insert_credit_reservation,
     lock_credit_accounts,
+    lock_credit_order,
     record_credit_release,
     record_credit_reservation,
     record_credit_transfer,
@@ -54,6 +58,7 @@ async def process_credit_command(
 ) -> CreditOperationResult:
     """Commit a command's decision with its credit changes; repeat its original reply."""
     async with _operation_transaction(session):
+        await lock_credit_order(session, command.order_id)
         claimed = await claim_credit_command(session, command)
         entry = await find_credit_outcome(session, command.request_id)
         if entry is None:
@@ -70,11 +75,26 @@ async def process_credit_command(
         reservation = None
         reason = None
         try:
-            reservation = await _execute_credit_command(session, command)
-        except (CreditNotFoundError, CreditReservationNotFoundError, CreditConsistencyError):
-            raise
+            # Funding and settlement share a savepoint. A rejected settlement
+            # must never leave behind a charge or newly issued credits.
+            async with session.begin_nested():
+                if isinstance(command, (ReleaseCreditCommand, TransferCreditCommand)) and command.repair:
+                    await fund_settlement_shortfall(session, command)
+                reservation = await _execute_credit_command(session, command)
         except ValueError as error:
             match error:
+                case CreditNotFoundError():
+                    # Provisioning retries belong to the UserCreated consumer,
+                    # not to this payment command. Preserve this refusal on replay.
+                    reason = CreditRejectionReason.ACCOUNT_NOT_FOUND
+                case CreditReservationNotFoundError():
+                    reason = CreditRejectionReason.RESERVATION_NOT_FOUND
+                case CreditConsistencyError():
+                    reason = CreditRejectionReason.BALANCE_INCONSISTENT
+                case CreditsAlreadyTransferredError():
+                    reason = CreditRejectionReason.ALREADY_TRANSFERRED
+                case CreditsAlreadyReleasedError():
+                    reason = CreditRejectionReason.ALREADY_RELEASED
                 case InsufficientCreditsError():
                     reason = CreditRejectionReason.INSUFFICIENT_CREDITS
                 case CreditReservationConflictError():
@@ -166,11 +186,11 @@ async def reserve_credits(
         accounts = await lock_credit_accounts(session, {requester_id})
         account = _require_account(accounts, requester_id)
         reservation = await find_credit_reservation(session, order_id, for_update=True)
+        await _validate_reserved_balance(session, account)
         if reservation is not None:
             _validate_reserve_retry(reservation, requester_id, amount)
             return await _reservation_result(session, reservation)
 
-        await _validate_reserved_balance(session, account)
         if account.available_credits < amount:
             raise InsufficientCreditsError("Insufficient available credits.")
         _validate_balance_limit(account.reserved_credits + amount)
@@ -199,13 +219,12 @@ async def release_credits(
         reservation = await _require_reservation(session, order_id)
         accounts = await lock_credit_accounts(session, {reservation.user_id})
         reservation = await _require_reservation(session, order_id, for_update=True)
+        account = _require_account(accounts, reservation.user_id)
+        await _validate_reserved_balance(session, account)
         if reservation.status == CreditReservationStatus.RELEASED:
             return await _reservation_result(session, reservation)
         if reservation.status != CreditReservationStatus.RESERVED:
-            raise CreditReservationConflictError("Transferred credits cannot be released.")
-
-        account = _require_account(accounts, reservation.user_id)
-        await _validate_reserved_balance(session, account)
+            raise CreditsAlreadyTransferredError("Transferred credits cannot be released.")
         _validate_balance_limit(account.available_credits + reservation.amount)
 
         now = _now()
@@ -231,18 +250,17 @@ async def transfer_credits(
 
         accounts = await lock_credit_accounts(session, {reservation.user_id, courier_id})
         reservation = await _require_reservation(session, order_id, for_update=True)
+        requester = _require_account(accounts, reservation.user_id)
+        courier = _require_account(accounts, courier_id)
+        await _validate_reserved_balance(session, requester)
+        await _validate_reserved_balance(session, courier)
         if reservation.status == CreditReservationStatus.TRANSFERRED:
             result = await _reservation_result(session, reservation)
             if result.recipient_user_id != courier_id:
                 raise CreditReservationConflictError("The order was transferred to another courier.")
             return result
         if reservation.status != CreditReservationStatus.RESERVED:
-            raise CreditReservationConflictError("Released credits cannot be transferred.")
-
-        requester = _require_account(accounts, reservation.user_id)
-        courier = _require_account(accounts, courier_id)
-        await _validate_reserved_balance(session, requester)
-        await _validate_reserved_balance(session, courier)
+            raise CreditsAlreadyReleasedError("Released credits cannot be transferred.")
         _validate_balance_limit(courier.total_credits + reservation.amount)
 
         now = _now()
