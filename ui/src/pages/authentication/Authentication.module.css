@@ -73,6 +73,18 @@
   color: #687369;
 }
 
+.error {
+  margin: 0;
+  padding: 12px 14px;
+  color: #794b30;
+  background: #f7eee0;
+  border: 1px solid #dfceb4;
+  border-radius: 5px;
+  font-size: .85rem;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
 .welcomeCredits {
   margin: 0;
   padding: 12px 14px;
