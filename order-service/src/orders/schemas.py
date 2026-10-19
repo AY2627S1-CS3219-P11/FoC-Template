@@ -66,3 +66,14 @@ class OrderResponse(BaseModel):
 
 class ServerClockResponse(BaseModel):
     server_time: datetime
+
+
+class OrderAuditLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    log_id: UUID
+    order_id: UUID
+    actor_id: UUID | None = None
+    action: Status
+    reason: str | None = None
+    created_at: datetime

@@ -21,8 +21,7 @@ from orders.orm_models import (
     OrderCreationKey,
     Status,
 )
-from orders.repository import add_credit_command
-
+from orders.repository import add_credit_command, record_order_audit_log
 
 class CreationConflict(ValueError):
     """The requester already used this key for different order contents."""
@@ -93,11 +92,7 @@ async def create_order_idempotently(
     pickup_notes: str | None,
     credits: int,
 ) -> ErrandRequest:
-    """Commit an order, its key, and its reserve command in one transaction.
-
-    The session must use PostgreSQL's default READ COMMITTED isolation, and
-    should be dedicated to this HTTP request (this function commits it).
-    """
+    """Commit an order, its key, and its reserve command in one transaction."""
     _validate_key(idempotency_key)
     try:
         await session.execute(
@@ -128,6 +123,9 @@ async def create_order_idempotently(
         add_credit_command(session, ReserveCreditCommand(
             request_id=uuid4(), order_id=order.id, requester_id=requester_id, amount=credits,
         ))
+
+        record_order_audit_log(session, order.id, Status.INIT, actor_id=requester_id)
+
         await session.commit()
         await session.refresh(order)
         return order
