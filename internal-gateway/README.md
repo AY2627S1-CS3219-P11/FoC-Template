@@ -6,7 +6,7 @@ Nginx routes HTTP calls through one configured `INTERNAL_GATEWAY_URL`:
 |------------------------| --- |-------------------------|
 | `/user-api/<path>`     | `/<path>` | `user-service:5005`     |
 | `/supplier-api/<path>` | `/<path>` | `supplier-service:3001` |
-| `/order-api/<path>`    | `/<path>` | `order-service:3001`    |
+| `/order-api/<path>`    | `/<path>` | `order-service:3002`    |
 | `/credit-api/<path>` | `/<path>` | `credit-service:3002` |
 | `/health` | Gateway liveness check | No backend |
 
@@ -34,6 +34,52 @@ The gateway listens on port 80 inside Docker and has **no published host port**
 or `extra_hosts` entries. Containers on the shared Compose network reach it at
 `http://internal-gateway`; browsers enter through the UI instead. No gateway
 host-port settings or additional Compose files are needed.
+
+## Demo dashboard: simulate service outages
+
+The dashboard starts with the default local stack and lets you disable or
+restore each service's **gateway route**, without stopping containers. From the
+repository root:
+
+```sh
+docker compose up -d --build
+```
+
+Open <http://127.0.0.1:4180>. Toggle User, Supplier, Order, or Credit between
+normal routing and simulated outage (`503 Service Unavailable`). Changes take
+effect without rebuilding or reloading nginx. Other routes and the gateway's
+`/health` remain available. The normal application UI stays on port 4173.
+
+The displayed state means **routing enabled/disabled**, not backend health. An
+enabled service can still be unavailable. Calls bypassing this gateway are
+unaffected; service-to-service calls through it are affected, including
+user-session checks. This is a demo of gateway-visible failures, not actual
+container crashes, latency, or network timeouts.
+
+The dashboard and its control API are for trusted local testing only. They have
+no authentication and bind to `127.0.0.1:4180`, separately from application
+routes; do not publish them externally. Production deployments must exclude
+`gateway-demo` and the shared outage-flag volume mount from the gateway.
+Mutations require same-origin JSON requests and accept only the four predefined
+service identifiers. The controller can only write outage flags; it has no
+Docker socket, command-execution API, or arbitrary nginx configuration access.
+NGINX mounts the shared flag volume read-only.
+
+Disabled routes persist in the `gateway-demo-state` named volume, including
+across container restarts. Restore all routes after a demo so outages do not
+carry into subsequent runs. To reset via API while the dashboard is running:
+
+```sh
+for service in user supplier order credit; do
+  curl --fail --request PUT "http://127.0.0.1:4180/api/services/$service" \
+    --header 'Origin: http://127.0.0.1:4180' \
+    --header 'Content-Type: application/json' --data '{"enabled":true}'
+done
+```
+
+Use normal `docker compose` commands to manage the whole stack. Avoid
+`docker compose down --volumes` on the application stack as a reset shortcut:
+it also deletes application database/message-broker volumes.
 
 ## Configuration boundary
 
@@ -90,5 +136,8 @@ Tests use an isolated Compose project with echo backends and a random loopback
 UI port, then remove its containers and network. They cover an unpublished
 gateway, backend-independent startup, missing runtime settings, routing through
 the UI and gateway, prefix stripping, request/cookie forwarding, upstream
-statuses, rejected gateway routes, and SPA fallback. No application secrets,
-databases, or RabbitMQ are needed.
+statuses, rejected gateway routes, and SPA fallback. They also exercise the
+dashboard API, per-service outage/restoration for all four routes, isolation
+between routes, still-running backends, gateway liveness during outages, and
+rejection of unsafe control requests. No application secrets, databases, or
+RabbitMQ are needed.

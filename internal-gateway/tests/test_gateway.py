@@ -56,8 +56,12 @@ class GatewayTests(unittest.TestCase):
         cls.project = f"foc-gateway-test-{uuid4().hex[:8]}"
         cls.addClassCleanup(cls.compose, "down", "--volumes", "--remove-orphans")
         # Start proxies without peers: nginx must not require them at startup.
-        cls.compose("up", "-d", "--build", "--wait", "internal-gateway", "ui")
+        cls.compose(
+            "up", "-d", "--build", "--wait", "internal-gateway", "ui", "gateway-demo"
+        )
         cls.ui_url = "http://" + cls.compose("port", "ui", "80")
+        cls.demo_url = "http://" + cls.compose("port", "gateway-demo", "8080")
+        wait_for(cls.demo_url + "/api/services")
         cls.startup_health = json.loads(
             cls.compose(
                 "exec", "-T", "internal-gateway", "wget", "-q", "-O", "-",
@@ -66,9 +70,88 @@ class GatewayTests(unittest.TestCase):
         )
         cls.compose("exec", "-T", "internal-gateway", "nginx", "-t")
         cls.unavailable_status = request(cls.ui_url + "/user-api/health")[0]
-        cls.compose("up", "-d", "user-service", "supplier-service")
-        for prefix in ("/user-api", "/supplier-api"):
-            wait_for(cls.ui_url + prefix + "/health")
+        cls.compose(
+            "up", "-d", "user-service", "supplier-service", "order-service", "credit-service"
+        )
+        for service in ("user", "supplier", "order", "credit"):
+            wait_for(cls.ui_url + f"/{service}-api/health")
+
+    def set_route(self, service, enabled):
+        return request(
+            self.demo_url + f"/api/services/{service}",
+            method="PUT",
+            body=json.dumps({"enabled": enabled}).encode(),
+            headers={"Content-Type": "application/json", "Origin": self.demo_url},
+        )
+
+    def test_demo_dashboard_and_service_list(self):
+        status, headers, body = request(self.demo_url + "/")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers["Content-Type"])
+        self.assertIn(b"<html", body.lower())
+        status, _, raw = request(self.demo_url + "/api/services")
+        self.assertEqual(status, 200)
+        services = {item["id"]: item for item in json.loads(raw)["services"]}
+        self.assertEqual(set(services), {"user", "supplier", "order", "credit"})
+        for service, item in services.items():
+            self.assertEqual(item["route"], f"/{service}-api/")
+            self.assertIs(item["enabled"], True)
+
+    def test_demo_toggles_routes_without_stopping_backends(self):
+        for service in ("user", "supplier", "order", "credit"):
+            with self.subTest(service=service):
+                try:
+                    self.assertEqual(self.set_route(service, False)[0], 200)
+                    for method in ("GET", "POST", "PATCH", "DELETE"):
+                        self.assertEqual(
+                            request(self.ui_url + f"/{service}-api/health", method=method)[0],
+                            503,
+                        )
+                    status, _, raw = request(self.demo_url + "/api/services")
+                    self.assertEqual(status, 200)
+                    states = {item["id"]: item["enabled"] for item in json.loads(raw)["services"]}
+                    self.assertIs(states[service], False)
+                    for other in states.keys() - {service}:
+                        self.assertIs(states[other], True)
+                        self.assertEqual(request(self.ui_url + f"/{other}-api/health")[0], 200)
+                    # The service itself is still running; only gateway routing is disabled.
+                    port = "5005" if service == "user" else "3001" if service == "supplier" else "3002"
+                    direct = self.compose(
+                        "exec", "-T", service + "-service", "python", "-c",
+                        "from urllib.request import urlopen; "
+                        f"print(urlopen('http://127.0.0.1:{port}/health').status)",
+                    )
+                    self.assertEqual(direct, "200")
+                    health = self.compose(
+                        "exec", "-T", "internal-gateway", "wget", "-q", "-O", "-",
+                        "http://127.0.0.1/health",
+                    )
+                    self.assertEqual(json.loads(health)["status"], "healthy")
+                finally:
+                    self.assertEqual(self.set_route(service, True)[0], 200)
+                self.assertEqual(request(self.ui_url + f"/{service}-api/health")[0], 200)
+
+    def test_demo_rejects_unsafe_mutations(self):
+        url = self.demo_url + "/api/services/user"
+        for headers in (
+            {"Content-Type": "application/json"},
+            {"Content-Type": "application/json", "Origin": "http://evil.example"},
+            {"Content-Type": "text/plain", "Origin": self.demo_url},
+        ):
+            with self.subTest(headers=headers):
+                status, _, _ = request(
+                    url, method="PUT", body=b'{"enabled":false}', headers=headers
+                )
+                self.assertGreaterEqual(status, 400)
+                self.assertLess(status, 500)
+        headers = {"Content-Type": "application/json", "Origin": self.demo_url}
+        for body in (b'{"enabled":"false"}', b'{"enabled":0}', b'{}', b'[]', b'{'):
+            with self.subTest(body=body):
+                status, _, _ = request(url, method="PUT", body=body, headers=headers)
+                self.assertGreaterEqual(status, 400)
+                self.assertLess(status, 500)
+        self.assertEqual(self.set_route("unknown", False)[0], 404)
+        self.assertEqual(request(self.ui_url + "/user-api/health")[0], 200)
 
     def test_gateway_is_internal_only(self):
         result = subprocess.run(
