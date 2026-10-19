@@ -51,6 +51,7 @@ const AppHeader = () => {
         <Link to={routes.home} aria-current={location.pathname === routes.home ? 'page' : undefined}>Home</Link>
         <Link to={routes.suppliers} aria-current={location.pathname === routes.suppliers ? 'page' : undefined}>Suppliers</Link>
         <Link to="/orders" aria-current={location.pathname === '/orders' ? 'page' : undefined}>Orders</Link>
+        {(session.role === 'admin' || session.role === 'admin_manager') && <Link className={styles.adminLink} to={routes.orderOperations} aria-current={location.pathname === routes.orderOperations ? 'page' : undefined}>Order operations</Link>}
         <button
           className={styles.accountButton}
           type="button"
@@ -100,6 +101,7 @@ const AppHeader = () => {
               <span>Profile</span>
               <span aria-hidden="true">→</span>
             </Link>
+            {(session.role === 'admin' || session.role === 'admin_manager') && <Link className={styles.adminLink} to={routes.orderOperations} onClick={() => setIsOpen(false)}><span>Order operations</span><span aria-hidden="true">→</span></Link>}
             {session.role === 'admin_manager' && (
               <Link className={styles.adminLink} to={routes.adminManagerPortal} onClick={() => setIsOpen(false)}>
                 <span>Admin manager portal</span>

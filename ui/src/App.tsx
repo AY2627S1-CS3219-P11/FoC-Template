@@ -6,6 +6,7 @@ import SignIn from './pages/authentication/signIn/SignIn'
 import SignUp from './pages/authentication/signUp/SignUp'
 import Home from './pages/home/Home'
 import Orders from './pages/orders/Orders'
+import OrderOperations from './pages/orderOperations/OrderOperations'
 import Profile from './pages/profile/Profile'
 import Suppliers from './pages/suppliers/Suppliers'
 import { routes } from './routes'
@@ -21,6 +22,7 @@ const appRoutes: RouteObject[] = [
         children: [
           { path: routes.home, element: <Home /> },
           { path: routes.orders, element: <Orders /> },
+          { path: routes.orderOperations, element: <OrderOperations /> },
           { path: routes.profile, element: <Profile /> },
           { path: routes.adminManagerPortal, element: <AdminManagerPortal /> },
           { path: routes.suppliers, element: <Suppliers /> },

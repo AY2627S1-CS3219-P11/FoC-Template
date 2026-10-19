@@ -46,6 +46,11 @@
   text-underline-offset: 7px;
 }
 
+.navigation > a.adminLink {
+  color: var(--admin-accent);
+  font-weight: 700;
+}
+
 .accountButton {
   width: 42px;
   height: 42px;

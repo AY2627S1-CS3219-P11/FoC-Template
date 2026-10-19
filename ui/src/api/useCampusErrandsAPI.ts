@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import type { Order, CreateOrderRequest, CreditBalance, OrderAction } from '../pages/orders/models'
+import type { ResolutionAction, RepairAction, OrderReview } from './orderOperations'
 import { makeAuthenticatedCampusErrandsAPIRequest, makeCampusErrandsAPIRequest } from './api'
 import type { AuthenticatedRequestOptions } from './api'
 import { endpointConfig } from './endpointConfig'
@@ -81,6 +82,10 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
       ),
   },
   order: {
+    disputed: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.disputed),
+    resolve: (id: string, action: ResolutionAction, reason: string) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string; action: ResolutionAction; reason: string }, Order>({ id, action, reason }, endpointConfig.order.orders.resolve),
+    review: (id: string) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string }, OrderReview>({ id }, endpointConfig.order.orders.review),
+    repair: (id: string, request_id: string, action: RepairAction, reason: string) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string; request_id: string; action: RepairAction; reason: string }, Order>({ id, request_id, action, reason }, endpointConfig.order.orders.repair),
     open: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.open),
     requested: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.requested),
     assigned: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.assigned),
