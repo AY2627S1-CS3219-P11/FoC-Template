@@ -67,3 +67,4 @@ class UserCreatedOutbox(Base):
         PostgresUUID(as_uuid=True), primary_key=True,
     )
     payload: Mapped[str] = mapped_column(Text, nullable=False)
+    published_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)

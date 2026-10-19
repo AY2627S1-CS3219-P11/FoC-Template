@@ -1,16 +1,16 @@
 import asyncio
-from uuid import UUID
+import datetime
+from time import timezone
 
 import aio_pika
 from aio_pika.abc import AbstractExchange, AbstractIncomingMessage
 from pamqp.commands import Basic
 from pydantic import ValidationError
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from auth.models import CreditAccountsSyncRequested, RoutingKey, UserCreatedOutboxResponse
+from auth.models import CreditAccountsSyncRequested, RoutingKey, UserCreatedOutboxResponse, UserCreated
 from auth.orm_models import UserCreatedOutbox
-from auth.repository import enqueue_user_created_events
+from auth.repository import enqueue_user_created_events, find_pending_user_event
 
 
 async def consume_credit_accounts_sync_requested(
@@ -42,27 +42,22 @@ async def consume_credit_accounts_sync_requested(
 
 
 async def publish_pending_user_events(
-    session_factory: async_sessionmaker[AsyncSession],
-    exchange: AbstractExchange,
-    user_id: UUID | None = None,
+        session_factory: async_sessionmaker[AsyncSession],
+        exchange: AbstractExchange,
 ) -> None:
     try:
-        for _ in range(1 if user_id is not None else 100):
+        for _ in range(100):
             async with session_factory.begin() as session:
-                statement = (
-                    select(UserCreatedOutbox)
-                    .order_by(UserCreatedOutbox.user_id)
-                    .limit(1)
-                    .with_for_update(skip_locked=True)
-                )
-                if user_id is not None:
-                    statement = statement.where(UserCreatedOutbox.user_id == user_id)
-                pending = await session.scalar(statement)
+                pending = await find_pending_user_event(session)
                 if pending is None:
                     return
 
                 outbox_response = UserCreatedOutboxResponse.model_validate(pending)
-                payload = outbox_response.payload
+                payload = UserCreated(
+                    event=outbox_response.event,
+                    user_id=outbox_response.user_id,
+                    created_at=outbox_response.created_at,
+                )
                 if payload.user_id != outbox_response.user_id:
                     raise ValueError("The stored event has a different user ID.")
 
@@ -80,7 +75,8 @@ async def publish_pending_user_events(
                     )
                 if not isinstance(confirmation, Basic.Ack):
                     raise RuntimeError("RabbitMQ did not confirm UserCreated delivery")
-                await session.delete(pending)
+
+                pending.published_at = datetime.now(timezone.utc).replace(tzinfo=None)
     except Exception as error:
         print(
             f"UserCreated publication failed ({type(error).__name__}); "

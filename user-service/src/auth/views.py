@@ -48,9 +48,7 @@ async def sign_up(credentials: SignUpRequest, request: Request,
         user = await register_user(credentials, session)
     except UserAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
-    await publish_pending_user_events(
-        request.app.state.session_factory, request.app.state.user_exchange, user.id,
-    )
+
     return {"message": "Account created successfully. Please sign in to continue."}
 
 
