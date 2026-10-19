@@ -90,12 +90,16 @@ async def initialize_messaging(
         # Order validates users and order states
         # Shared broker credentials allow other services to publish too
         command_queue = await channel.declare_queue(QueueName.CREDIT_COMMANDS, durable=True)
+        await channel.declare_queue(QueueName.CREDIT_FAILED_COMMANDS, durable=True)
+
         for routing_key in CREDIT_COMMAND_MODELS:
             await command_queue.bind(credit_exchange, routing_key=routing_key)
+
         command_tag = await command_queue.consume(
             partial(
                 consume_credit_command, session_factory=session_factory,
                 command_exchange=credit_exchange,
+                failed_exchange=channel.default_exchange,
             ),
             no_ack=False,
         )

@@ -1,16 +1,32 @@
 import asyncio
+from contextlib import suppress
 from uuid import uuid4
 
 import aio_pika
 from aio_pika.abc import AbstractExchange, AbstractIncomingMessage
 from pamqp.commands import Basic
 from pydantic import ValidationError
+from sqlalchemy.exc import (
+    DBAPIError,
+    InterfaceError,
+    OperationalError,
+    TimeoutError as PoolTimeoutError,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from credit.exceptions import CreditRequestConflictError
+from common.config_manager import settings
+from credit.exceptions import (
+    CreditConsistencyError,
+    CreditNotFoundError,
+    CreditReservationNotFoundError,
+    CreditRequestConflictError,
+)
 from credit.models import (
     CreditAccountsSyncRequested,
+    CreditCommandFailureReason,
+    MessageHeader,
     MessageType,
+    QueueName,
     ReleaseCreditCommand,
     ReserveCreditCommand,
     RoutingKey,
@@ -82,6 +98,7 @@ async def consume_credit_command(
     message: AbstractIncomingMessage,
     session_factory: async_sessionmaker[AsyncSession],
     command_exchange: AbstractExchange,
+    failed_exchange: AbstractExchange,
 ) -> None:
     try:
         credit_command = CREDIT_COMMAND_MODELS[message.routing_key].model_validate_json(message.body)
@@ -93,8 +110,7 @@ async def consume_credit_command(
     try:
         async with session_factory() as session:
             outcome = await process_credit_command(session, credit_command)
-        await message.ack()
-        print(f"Credit {outcome.operation} {outcome.request_id}: {outcome.outcome}.")
+
     except CreditRequestConflictError:
         print(
             f"Credit request {credit_command.request_id} reused for another command; "
@@ -104,39 +120,96 @@ async def consume_credit_command(
     except Exception as error:
         print(
             f"Credit {credit_command.operation} {credit_command.request_id} "
-            f"processing failed ({type(error).__name__}); command will be retried."
+            f"processing failed ({type(error).__name__})."
         )
-        await _retry_credit_command(message, command_exchange)
+        await _retry_or_retain_credit_command(
+            message, command_exchange, failed_exchange, error,
+        )
+    else:
+        try:
+            await message.ack()
+            print(f"Credit {outcome.operation} {outcome.request_id}: {outcome.outcome}.")
+        except Exception as error:
+            print(
+                f"Credit {outcome.request_id} committed; acknowledgement failed "
+                f"({type(error).__name__})."
+            )
+            if not message.processed:
+                with suppress(Exception):
+                    await message.nack(requeue=True)
 
 
-# Retry through the command exchange so queued commands can run first
-async def _retry_credit_command(
+def _is_temporary_credit_failure(error: Exception) -> bool:
+    if isinstance(error, (
+        CreditNotFoundError, CreditReservationNotFoundError, PoolTimeoutError, TimeoutError,
+    )):
+        return True
+    if not isinstance(error, DBAPIError):
+        return False
+
+    sqlstate = getattr(error.orig, "sqlstate", None)
+    if error.connection_invalidated:
+        return True
+    if sqlstate is None:
+        return isinstance(error, (OperationalError, InterfaceError))
+    return sqlstate.startswith("08") or sqlstate in {
+        "40001", "40P01", "55P03", "57P01", "57P02", "57P03", "53300",
+    }
+
+
+# retry temporary gaps within the limit else retain the command for review
+async def _retry_or_retain_credit_command(
     message: AbstractIncomingMessage,
     command_exchange: AbstractExchange,
+    failed_exchange: AbstractExchange,
+    error: Exception,
 ) -> None:
-    await asyncio.sleep(2)
+    headers = dict(message.headers)
+    retry_count = message.headers.get(MessageHeader.RETRY_COUNT, 0)
+    temporary = _is_temporary_credit_failure(error)
+    reason = None
+    if temporary and type(retry_count) is int and 0 <= retry_count < settings.credit_command_max_retries:
+        await asyncio.sleep(2)
+        headers[MessageHeader.RETRY_COUNT] = retry_count + 1
+        exchange, routing_key = command_exchange, message.routing_key
+    else:
+        if not temporary:
+            reason = (
+                CreditCommandFailureReason.INCONSISTENT_CREDITS
+                if isinstance(error, CreditConsistencyError)
+                else CreditCommandFailureReason.NON_RETRYABLE_ERROR
+            )
+        elif type(retry_count) is not int or retry_count < 0:
+            reason = CreditCommandFailureReason.INVALID_RETRY_METADATA
+        else:
+            reason = CreditCommandFailureReason.RETRIES_EXHAUSTED
+        headers[MessageHeader.ORIGINAL_ROUTING_KEY] = message.routing_key
+        headers[MessageHeader.FAILURE_REASON] = reason
+        headers[MessageHeader.ERROR_TYPE] = type(error).__name__
+        exchange, routing_key = failed_exchange, QueueName.CREDIT_FAILED_COMMANDS
+
     try:
-        confirmation = await command_exchange.publish(
+        confirmation = await exchange.publish(
             aio_pika.Message(
                 body=message.body,
                 content_type=message.content_type or "application/json",
                 type=message.type,
                 message_id=message.message_id,
                 correlation_id=message.correlation_id,
-                headers=dict(message.headers),
+                headers=headers,
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             ),
-            routing_key=message.routing_key,
+            routing_key=routing_key,
             mandatory=True,
             timeout=5,
         )
         if not isinstance(confirmation, Basic.Ack):
-            raise RuntimeError("RabbitMQ did not confirm the credit retry.")
+            raise RuntimeError("RabbitMQ did not confirm the credit command handoff.")
         await message.ack()
+        if reason is not None:
+            print(f"Credit command retained in {QueueName.CREDIT_FAILED_COMMANDS} ({reason}).")
     except Exception as error:
-        print(f"Credit retry publication failed ({type(error).__name__}); delivery retained.")
+        print(f"Credit command handoff failed ({type(error).__name__}); delivery retained.")
         if not message.processed:
-            try:
+            with suppress(Exception):
                 await message.nack(requeue=True)
-            except Exception:
-                print("Credit command awaits broker recovery as an unacknowledged delivery.")

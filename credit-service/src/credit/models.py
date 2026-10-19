@@ -52,6 +52,7 @@ class QueueName(StrEnum):
     CREDIT_USER_CREATED = "credit_user_created"
     CREDIT_ACCOUNTS_SYNC_REQUESTED = "credit_accounts_sync_requested"
     CREDIT_COMMANDS = "credit_service_commands_queue"
+    CREDIT_FAILED_COMMANDS = "credit_failed_commands"
 
 
 class RoutingKey(StrEnum):
@@ -171,3 +172,16 @@ class CreditOutboxResponse(BaseModel):
     request_id: UUID
     payload: Json[CreditOperationResult]
     published_at: datetime.datetime | None = None
+
+
+class CreditCommandFailureReason(StrEnum):
+    INCONSISTENT_CREDITS = "INCONSISTENT_CREDITS"
+    NON_RETRYABLE_ERROR = "NON_RETRYABLE_ERROR"
+    RETRIES_EXHAUSTED = "RETRIES_EXHAUSTED"
+    INVALID_RETRY_METADATA = "INVALID_RETRY_METADATA"
+
+class MessageHeader(StrEnum):
+    RETRY_COUNT = "x-credit-retry-count"
+    ORIGINAL_ROUTING_KEY = "x-credit-original-routing-key"
+    FAILURE_REASON = "x-credit-failure-reason"
+    ERROR_TYPE = "x-credit-error-type"
