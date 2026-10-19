@@ -14,7 +14,7 @@ from credit.events import (
     consume_user_created,
 )
 from credit.models import ExchangeName, QueueName, RoutingKey
-
+from credit.publisher import run_credit_event_publisher
 
 class MessagingResources(NamedTuple):
     connection: AbstractConnection
@@ -22,6 +22,13 @@ class MessagingResources(NamedTuple):
     user_exchange: AbstractExchange
     credit_exchange: AbstractExchange
     result_exchange: AbstractExchange
+
+async def _stop_task(task: asyncio.Task[None]) -> None:
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
 
 
 @asynccontextmanager
@@ -93,6 +100,12 @@ async def initialize_messaging(
             no_ack=False,
         )
         resources.push_async_callback(command_queue.cancel, command_tag)
+
+        outbox_task = asyncio.create_task(
+            run_credit_event_publisher(session_factory, result_exchange),
+            name="credit-event-publisher"
+        )
+        resources.push_async_callback(_stop_task, outbox_task)
 
         yield MessagingResources(
             connection, channel, user_exchange, credit_exchange, result_exchange,
