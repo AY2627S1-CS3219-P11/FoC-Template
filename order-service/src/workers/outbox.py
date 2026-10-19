@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import random
 from datetime import datetime, timedelta, timezone
 
 import aio_pika
@@ -14,6 +15,13 @@ from orders.models import RoutingKey
 from orders.repository import find_pending_credit_command
 
 logger = logging.getLogger("uvicorn.error")
+
+
+def replay_delay_seconds(attempt: int, base_seconds: int) -> float:
+    """Equal jitter, capped at 15 minutes; never replay faster than the base wait."""
+    base = max(1, base_seconds)
+    ceiling = min(max(base, 900), base * 2 ** min(max(attempt - 1, 0), 16))
+    return random.uniform(max(base, ceiling / 2), ceiling)
 
 
 async def publish_outbox_messages(session_factory: async_sessionmaker[AsyncSession], exchange: AbstractExchange,) -> None:
@@ -40,6 +48,7 @@ async def publish_next_outbox_message(session_factory: async_sessionmaker[AsyncS
             return False
 
         replay = outbox_message.published_at is not None
+        outbox_message.attempts += 1
 
         try:
             # add_credit_command already validated the payload before storing it.
@@ -72,8 +81,7 @@ async def publish_next_outbox_message(session_factory: async_sessionmaker[AsyncS
                 raise RuntimeError("RabbitMQ did not confirm credit command publication")
             
         except Exception as error:
-            outbox_message.attempts += 1
-            delay_seconds = 2 ** min(outbox_message.attempts, 8)
+            delay_seconds = replay_delay_seconds(outbox_message.attempts, 2)
             outbox_message.available_at = datetime.now(timezone.utc) + timedelta(
                 seconds=delay_seconds,
             )
@@ -88,6 +96,11 @@ async def publish_next_outbox_message(session_factory: async_sessionmaker[AsyncS
             # Replaying an unresolved request asks Credit for its saved
             # outcome, request ID prevents another credit action
             outbox_message.published_at = await session.scalar(select(func.clock_timestamp()))
+            outbox_message.available_at = outbox_message.published_at + timedelta(
+                seconds=replay_delay_seconds(
+                    outbox_message.attempts, settings.credit_result_timeout_seconds,
+                ),
+            )
             outbox_message.last_error = None
             logger.info(
                 "%s credit command %s for order %s (%s)",

@@ -11,7 +11,6 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     func,
     text,
 )
@@ -20,7 +19,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -36,7 +35,6 @@ class Status(str, Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
-    DISPUTED = "disputed"
     INIT = "init"
     REJECTED = "rejected"
 
@@ -84,6 +82,9 @@ class ErrandRequest(Base):
         default=CreditStatus.PENDING,
     )
 
+    credit_operation: Mapped[str] = mapped_column(String(16), nullable=False, default="RESERVE")
+    disputes: Mapped[list["OrderDispute"]] = relationship(lazy="selectin", order_by="OrderDispute.created_at")
+
     courier_id: Mapped[UUID | None] = mapped_column(
         PostgresUUID(as_uuid=True), nullable=True,
     )
@@ -118,6 +119,29 @@ class ErrandRequest(Base):
 
     __table_args__ = (
         CheckConstraint("credits >= 1", name="errand_requests_credits_check"),
+    )
+
+
+class OrderDispute(Base):
+    """A review case orthogonal to the order's fulfilment milestone."""
+
+    __tablename__ = "order_disputes"
+    id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True, default=uuid4)
+    order_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), ForeignKey("errand_requests.id", ondelete="CASCADE"), nullable=False,
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    opened_by: Mapped[UUID | None] = mapped_column(PostgresUUID(as_uuid=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.clock_timestamp())
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_by: Mapped[UUID | None] = mapped_column(PostgresUUID(as_uuid=True))
+    resolution: Mapped[str | None] = mapped_column(String(32))
+    resolution_reason: Mapped[str | None] = mapped_column(Text)
+    __table_args__ = (
+        CheckConstraint("kind IN ('fulfilment', 'financial')", name="dispute_kind_check"),
+        Index("one_open_dispute_per_kind", "order_id", "kind", unique=True,
+              postgresql_where=text("closed_at IS NULL")),
     )
 
 
@@ -158,7 +182,6 @@ class CreditCommandOutbox(Base):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
-        UniqueConstraint("order_id", "routing_key", name="credit_command_outbox_order_routing_key"),
         Index("credit_command_outbox_pending_idx", "available_at", "created_at"),
     )
 
