@@ -6,8 +6,20 @@ import type { Supplier } from '../suppliers/models'
 import { filterPersonalOrders, type OrderFilter, type OrderSort, canDispute, isUnaccepted, matchesOpenFilters, remainingSeconds, statusLabels, type Order, type OrderAction, type CreditBalance, type OrderItem } from './models'
 import { Modal } from '../../components/modal/Modal'
 import styles from './Orders.module.css'
+import { orderNotice, type OrderNotice } from './notifications'
+import { isRetryableSubmissionError, submitWithRetry } from './submission'
+import type { CreateOrderRequest } from './models'
 
 type View = 'open' | 'requested' | 'assigned'
+type Resource = View | 'credits' | 'suppliers'
+type ResourceState = { loaded: boolean; error: boolean }
+const initialResourceState: Record<Resource, ResourceState> = {
+  open: { loaded: false, error: false },
+  requested: { loaded: false, error: false },
+  assigned: { loaded: false, error: false },
+  credits: { loaded: false, error: false },
+  suppliers: { loaded: false, error: false },
+}
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.'
 
 const Orders = () => {
@@ -18,8 +30,7 @@ const Orders = () => {
   const [orders, setOrders] = useState<Record<View, Order[]>>({ open: [], requested: [], assigned: [] })
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [balance, setBalance] = useState<CreditBalance | null>(null)
-  const [loadError, setLoadError] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [resources, setResources] = useState(initialResourceState)
   const [now, setNow] = useState(() => Date.now())
   const [formOpen, setFormOpen] = useState(false)
   const [supplierId, setSupplierId] = useState('')
@@ -32,6 +43,22 @@ const Orders = () => {
   const [reason, setReason] = useState('')
   const [reportError, setReportError] = useState('')
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null)
+  const [acceptOrder, setAcceptOrder] = useState<Order | null>(null)
+  const [notices, setNotices] = useState<OrderNotice[]>([])
+  const observedOrders = useRef(new Map<string, Order>())
+  const announced = useRef(new Set<string>())
+  const observeOrders = useCallback((incoming: Order[]) => {
+    const additions: OrderNotice[] = []
+    for (const order of incoming) {
+      const notice = orderNotice(observedOrders.current.get(order.id), order, session.user_id)
+      observedOrders.current.set(order.id, order)
+      if (notice && !announced.current.has(notice.id)) {
+        announced.current.add(notice.id)
+        additions.push(notice)
+      }
+    }
+    if (additions.length) setNotices((current) => [...current, ...additions])
+  }, [session.user_id])
   const [statusFilter, setStatusFilter] = useState<OrderFilter>('all')
   const [sort, setSort] = useState<OrderSort>('attention')
   const [location, setLocation] = useState('')
@@ -40,36 +67,53 @@ const Orders = () => {
   const refreshing = useRef(false)
   const mutationLock = useRef(false)
   const [creationAttempt, setCreationAttempt] = useState<{ payload: string; key: string } | null>(null)
+  const cancellationIntent = useRef(false)
+  const [cancellationRequested, setCancellationRequested] = useState(false)
+  const [submissionMessage, setSubmissionMessage] = useState('')
+  const submissionController = useRef<AbortController | null>(null)
+  const submissionForm = useRef<HTMLFormElement | null>(null)
+  useEffect(() => () => submissionController.current?.abort(), [])
+  useEffect(() => {
+    if (!creationAttempt) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [creationAttempt])
 
   const refresh = useCallback(async () => {
     if (refreshing.current) return
     refreshing.current = true
     try {
-      const resources = {
-        'Open requests': async () => {
+      const loaders: Record<Resource, () => Promise<void>> = {
+        open: async () => {
           const open = await api.order.open()
           setOrders((current) => ({ ...current, open }))
         },
-        'My requests': async () => {
+        requested: async () => {
           const requested = await api.order.requested()
+          observeOrders(requested)
           setOrders((current) => ({ ...current, requested }))
         },
-        'My deliveries': async () => {
+        assigned: async () => {
           const assigned = await api.order.assigned()
+          observeOrders(assigned)
           setOrders((current) => ({ ...current, assigned }))
         },
-        Credits: async () => { setBalance(await api.credit.current()) },
-        Suppliers: async () => { setSuppliers(await api.supplier.list()) },
+        credits: async () => { setBalance(await api.credit.current()) },
+        suppliers: async () => { setSuppliers(await api.supplier.list()) },
       }
-      const results = await Promise.allSettled(Object.values(resources).map((load) => load()))
-      const failures = results.flatMap((result, index) => result.status === 'rejected'
-        ? [`${Object.keys(resources)[index]}: ${errorMessage(result.reason)}`] : [])
-      setLoadError(failures.length ? `Unable to refresh ${failures.join('; ')}` : '')
+      await Promise.all((Object.entries(loaders) as [Resource, () => Promise<void>][]).map(async ([key, load]) => {
+        try {
+          await load()
+          setResources((current) => ({ ...current, [key]: { loaded: true, error: false } }))
+        } catch {
+          setResources((current) => ({ ...current, [key]: { ...current[key], error: true } }))
+        }
+      }))
     } finally {
       refreshing.current = false
-      setLoading(false)
     }
-  }, [api])
+  }, [api, observeOrders])
 
   useEffect(() => {
     const initialLoad = window.setTimeout(() => void refresh(), 0)
@@ -78,31 +122,66 @@ const Orders = () => {
     return () => { window.clearTimeout(initialLoad); window.clearInterval(poll); window.clearInterval(clock) }
   }, [refresh])
 
+  const checkedBalance = resources.credits.loaded && !resources.credits.error ? balance : null
+
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const amount = Number(credits)
-    const request = { supplier_id: supplierId, items: items.map((item) => ({ ...item, name: item.name.trim() })), pickup_notes: `Delivery location: ${delivery.trim()}${notes.trim() ? `\nPickup notes: ${notes.trim()}` : ''}`, credits: amount }
-    const payload = JSON.stringify(request)
-    const retry = creationAttempt?.payload === payload
+    const draft = { supplier_id: supplierId, items: items.map((item) => ({ ...item, name: item.name.trim() })), pickup_notes: `Delivery location: ${delivery.trim()}${notes.trim() ? `\nPickup notes: ${notes.trim()}` : ''}`, credits: amount }
+    const payload = creationAttempt?.payload ?? JSON.stringify(draft)
+    const request: CreateOrderRequest = JSON.parse(payload)
+    const retry = creationAttempt !== null
     if (mutationLock.current) return
-    if ((!retry && !suppliers.some((supplier) => supplier.id === supplierId)) || !delivery.trim() || items.some((item) => !item.name.trim() || !Number.isSafeInteger(item.quantity) || item.quantity < 1) || !Number.isSafeInteger(amount) || amount < 1 || (!retry && (!balance || amount > balance.available_credits))) {
-      showErrorToast('Choose an active supplier, complete the delivery details, and offer whole credits within your available balance.')
+    if (!retry && (!suppliers.some((supplier) => supplier.id === supplierId) || !delivery.trim() || items.some((item) => !item.name.trim() || !Number.isSafeInteger(item.quantity) || item.quantity < 1) || !Number.isSafeInteger(amount) || amount < 1 || (checkedBalance !== null && amount > checkedBalance.available_credits))) {
+      showErrorToast('Choose an active supplier, complete the delivery details, and offer whole credits within your available balance when it can be checked.')
       return
     }
     mutationLock.current = true
     setBusy('create')
+    const controller = new AbortController()
+    submissionController.current = controller
+    setSubmissionMessage(cancellationIntent.current ? 'Recovering the request to confirm cancellation…' : 'Submitting request…')
     try {
-      const attempt = creationAttempt?.payload === payload ? creationAttempt : { payload, key: crypto.randomUUID() }
+      const attempt = creationAttempt ?? { payload, key: crypto.randomUUID() }
       setCreationAttempt(attempt)
-      await api.order.create(request, attempt.key)
+      const { order: created, cancellationUnavailable } = await submitWithRetry({
+        api: api.order, request, key: attempt.key, signal: controller.signal,
+        wantsCancellation: () => cancellationIntent.current,
+        onRetry: (number, delay) => setSubmissionMessage(`${cancellationIntent.current ? 'Cancellation not yet confirmed' : 'Request not yet confirmed'}. Retrying in ${Math.ceil(delay / 1000)}s (attempt ${number}/6)…`),
+      })
+      if (controller.signal.aborted) return
+      if (!cancellationIntent.current) {
+        // Seed the new request so even an immediate reservation is announced.
+        observedOrders.current.set(created.id, { ...created, status: 'init' })
+        observeOrders([created])
+      }
       setCreationAttempt(null)
+      setSubmissionMessage('')
       setFormOpen(false)
       setItems([{ name: '', quantity: 1 }]); setDelivery(''); setNotes(''); setCredits('1')
       setView('requested')
-      showSuccessToast('Request submitted. It becomes available once credits are reserved.')
+      if (cancellationUnavailable) showErrorToast(`Cancellation could not be completed: the request is ${statusLabels[created.status].toLowerCase()}. Check My requests.`)
+      else showSuccessToast(cancellationIntent.current ? 'Request cancelled. Any reserved credits will be released.' : 'Request submitted. It becomes available once credits are reserved.')
+      cancellationIntent.current = false
+      setCancellationRequested(false)
       await refresh()
-    } catch (error) { showErrorToast(errorMessage(error)) }
-    finally { mutationLock.current = false; setBusy(null) }
+    } catch (error) {
+      if (controller.signal.aborted) return
+      const uncertain = isRetryableSubmissionError(error) || cancellationIntent.current
+      if (!uncertain) setCreationAttempt(null)
+      setSubmissionMessage(uncertain ? 'Automatic retries paused. The outcome is not confirmed. Retry this same request to resolve it; do not submit a duplicate. Keep this page open.' : errorMessage(error))
+      showErrorToast(errorMessage(error))
+    } finally {
+      mutationLock.current = false
+      if (!controller.signal.aborted) setBusy(null)
+    }
+  }
+
+  const requestCancellation = () => {
+    cancellationIntent.current = true
+    setCancellationRequested(true)
+    setSubmissionMessage('Cancellation requested. We must confirm the order first; cancellation is not guaranteed if it has already been accepted.')
+    if (!mutationLock.current) submissionForm.current?.requestSubmit()
   }
 
   const update = async (order: Order, action: OrderAction) => {
@@ -112,6 +191,7 @@ const Orders = () => {
     try {
       await api.order.update(order.id, action)
       if (action === 'cancel') setCancelOrder(null)
+      if (action === 'accept') { setAcceptOrder(null); setView('assigned') }
       showSuccessToast(action === 'receive' ? 'Receipt confirmed. Credit transfer is processing.' : 'Order updated.')
     } catch (error) { showErrorToast(errorMessage(error)) }
     finally { await refresh(); mutationLock.current = false; setBusy(null) }
@@ -133,6 +213,10 @@ const Orders = () => {
     finally { await refresh(); mutationLock.current = false; setBusy(null) }
   }
 
+  const loadError = resources[view].error
+  const loadingOrders = !resources[view].loaded && !loadError
+  const creationUnavailable = !creationAttempt && suppliers.length === 0
+
   const visibleOrders = view === 'open'
     ? orders.open.filter((order) => matchesOpenFilters(order, now, location, minCredits, maxCredits))
     : filterPersonalOrders(orders[view], statusFilter, sort)
@@ -143,18 +227,27 @@ const Orders = () => {
       <button className={styles.primary} onClick={() => setFormOpen(true)} aria-haspopup="dialog" aria-controls="new-request">+ New request</button>
     </header>
     <section className={styles.wallet} aria-label="Credit balance">
-      <div><span>Available credits</span><strong>{balance?.available_credits ?? '—'}</strong></div>
-      <div><span>Reserved credits</span><strong>{balance?.reserved_credits ?? '—'}</strong></div>
-      <p>Credits are reserved for your requests, returned on cancellation or expiry, and awarded to the courier after you confirm receipt.</p>
+      <div><span>Available credits</span><strong>{resources.credits.error ? '—' : balance?.available_credits ?? '—'}</strong></div>
+      <div><span>Reserved credits</span><strong>{resources.credits.error ? '—' : balance?.reserved_credits ?? '—'}</strong></div>
+      {resources.credits.error
+        ? <div className={styles.notice} role="status"><strong>Credit balance is temporarily unavailable</strong><p>You can still submit requests and manage orders. Credits will be checked when your request is processed.</p><button onClick={() => void refresh()}>Try again</button></div>
+        : !resources.credits.loaded ? <p role="status">Loading your credit balance…</p>
+        : <p>Credits are reserved for your requests, returned on cancellation or expiry, and awarded to the courier after you confirm receipt.</p>}
     </section>
-    {loadError && <div role="alert" className={styles.error}>{loadError} <button onClick={() => void refresh()}>Retry</button><p>Displayed information may be out of date.</p></div>}
     {formOpen && <Modal id="new-request" labelledBy="request-title" onClose={() => setFormOpen(false)} busy={busy === 'create'}><section className={styles.formPanel}>
       <div className={styles.formHeading}><h2 id="request-title">What do you need picked up?</h2><button type="button" disabled={busy === 'create'} onClick={() => setFormOpen(false)}>Close</button></div>
       <p>Only active suppliers are available. Open requests expire after 15 minutes.</p>
-      {!loading && suppliers.length === 0 && <p role="status">No active suppliers are available. If loading failed, use Retry above.</p>}
-      <form onSubmit={(event) => void submit(event)}>
+      {resources.suppliers.error && <div className={styles.notice} role="status"><strong>Suppliers are temporarily unavailable</strong><p>Your draft is safe. Please try again before submitting a new request.</p><button onClick={() => void refresh()}>Try again</button></div>}
+      {resources.credits.error && <div className={styles.notice} role="status"><p>Unable to check your credit limit right now. You can still submit, but you may not have enough credits. Your request will only open if enough credits can be reserved.</p><button onClick={() => void refresh()}>Retry balance</button></div>}
+      {resources.open.error && <div className={styles.notice} role="status"><p>Orders are temporarily unavailable. You can still submit; we’ll retry if your request cannot be confirmed.</p></div>}
+      {submissionMessage && <div className={styles.notice} role="status"><p>{submissionMessage}</p></div>}
+      {!resources.credits.loaded && !resources.credits.error && <p role="status">Unable to check your credit limit yet. You can still submit, but you may not have enough credits.</p>}
+      {!resources.suppliers.loaded && !resources.suppliers.error && <p role="status">Loading suppliers…</p>}
+      {resources.suppliers.loaded && !resources.suppliers.error && suppliers.length === 0 && <p role="status">No active suppliers are available right now.</p>}
+      <form ref={submissionForm} onSubmit={(event) => void submit(event)}>
+        <fieldset disabled={creationAttempt !== null}>
         <div className={styles.formGrid}>
-          <label>Supplier<select required value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Choose an active supplier</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.building}, floor {supplier.floor}</option>)}</select></label>
+          <label>Supplier<select required disabled={resources.suppliers.error || !resources.suppliers.loaded} value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Choose an active supplier</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.building}, floor {supplier.floor}</option>)}</select></label>
           <label>Delivery location<input required maxLength={500} value={delivery} onChange={(event) => setDelivery(event.target.value)} placeholder="Building, floor and meeting point" /></label>
         </div>
         <fieldset><legend>Items for pickup</legend>{items.map((item, index) => <div className={styles.itemRow} key={index}>
@@ -164,10 +257,24 @@ const Orders = () => {
         </div>)}<button type="button" onClick={() => setItems([...items, { name: '', quantity: 1 }])}>+ Add item</button></fieldset>
         <div className={styles.formGrid}>
           <label>Pickup notes (optional)<textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Special instructions, substitutions, or how to collect" /></label>
-          <label>Credits to award<input required type="number" min="1" step="1" max={creationAttempt ? undefined : balance?.available_credits ?? 0} value={credits} onChange={(event) => setCredits(event.target.value)} /><small>At least 1 whole credit. Available: {balance?.available_credits ?? 'unavailable'}.</small></label>
+          <label>Credits to award<input required type="number" min="1" step="1" max={creationAttempt ? undefined : checkedBalance?.available_credits} value={credits} onChange={(event) => setCredits(event.target.value)} /><small>At least 1 whole credit. Available: {resources.credits.error ? 'unavailable' : balance?.available_credits ?? 'loading…'}.</small></label>
         </div>
-        <button className={styles.primary} disabled={busy !== null || (!creationAttempt && (!balance || balance.available_credits < 1 || suppliers.length === 0)) || !!loadError} type="submit">{busy === 'create' ? 'Submitting…' : 'Submit request'}</button>
+        </fieldset>
+        <button className={styles.primary} disabled={busy !== null || (!creationAttempt && checkedBalance !== null && checkedBalance.available_credits < 1) || creationUnavailable} type="submit">{busy === 'create' ? (cancellationRequested ? 'Cancelling…' : 'Submitting…') : creationAttempt ? (cancellationRequested ? 'Retry cancellation' : 'Retry same request') : 'Submit request'}</button>
+        {creationAttempt && !cancellationRequested && <button type="button" onClick={requestCancellation}>Cancel request</button>}
       </form>
+    </section></Modal>}
+    {notices.length > 0 && !formOpen && !reportOrder && !cancelOrder && !acceptOrder && <Modal id="order-notice" labelledBy="order-notice-title" onClose={() => setNotices((current) => current.slice(1))}><section className={styles.formPanel}>
+      <h2 id="order-notice-title">{notices[0].title}</h2>
+      <p>{notices[0].order.supplier_snapshot?.name ?? 'Order'} · {notices[0].order.items.map((item) => `${item.quantity} × ${item.name}`).join(', ')}</p>
+      <p>{notices[0].message}</p>
+      <button className={styles.primary} onClick={() => setNotices((current) => current.slice(1))}>Got it</button>
+    </section></Modal>}
+    {acceptOrder && <Modal id="accept-request" labelledBy="accept-title" onClose={() => setAcceptOrder(null)} busy={busy !== null}><section className={styles.formPanel}>
+      <h2 id="accept-title">Accept this request?</h2>
+      <p>{acceptOrder.supplier_snapshot?.name ?? 'Order'} · {acceptOrder.items.map((item) => `${item.quantity} × ${item.name}`).join(', ')}</p>
+      <p>Once you accept, you cannot rescind your acceptance or cancel this delivery. Only accept if you can complete it.</p>
+      <div className={styles.cardActions}><button disabled={busy !== null} onClick={() => setAcceptOrder(null)}>Go back</button><button className={styles.primary} disabled={busy !== null || resources.open.error || remainingSeconds(acceptOrder, now) === 0} onClick={() => void update(acceptOrder, 'accept')}>{busy ? 'Accepting…' : 'Accept request'}</button></div>
     </section></Modal>}
     {reportOrder && <Modal id="report-problem" labelledBy="report-title" onClose={() => setReportOrder(null)} busy={busy !== null}><section className={styles.formPanel}>
       <h2 id="report-title">Report a problem</h2>
@@ -196,7 +303,8 @@ const Orders = () => {
       <label>Sort by<select value={sort} onChange={(event) => setSort(event.target.value as OrderSort)}><option value="attention">Needs attention first</option><option value="newest">Newest created</option><option value="oldest">Oldest created</option></select></label>
     </section>}
     <div className={styles.listHeading}><h2>{view === 'open' ? 'Find a favour along your way' : view === 'requested' ? 'Your requests' : 'Your deliveries'}</h2><span>Updates every 5 seconds</span></div>
-    {loading ? <p role="status">Loading orders…</p> : visibleOrders.length === 0 ? <div className={styles.empty}><h3>{view === 'open' ? 'No open requests right now' : 'No matching orders'}</h3><p>{view === 'open' ? 'Try adjusting your filters or check back soon.' : 'Try another status filter, or request or accept an errand.'}</p></div> : <div className={styles.grid}>{visibleOrders.map((order) => {
+    {loadError && <div role="status" className={styles.notice}><strong>{view === 'open' ? 'Open requests' : view === 'requested' ? 'Your requests' : 'Your deliveries'} are temporarily unavailable</strong><p>{resources[view].loaded ? 'Showing the last loaded orders. They may be out of date; actions will return when we reconnect.' : 'We couldn’t load this list. Please try again shortly.'} Other sections are still available.</p><button onClick={() => void refresh()}>Try again</button></div>}
+    {loadingOrders ? <p role="status">Loading orders…</p> : loadError && visibleOrders.length === 0 ? null : visibleOrders.length === 0 ? <div className={styles.empty}><h3>{view === 'open' ? 'No open requests right now' : 'No matching orders'}</h3><p>{view === 'open' ? 'Try adjusting your filters or check back soon.' : 'Try another status filter, or request or accept an errand.'}</p></div> : <div className={styles.grid}>{visibleOrders.map((order) => {
       const seconds = remainingSeconds(order, now)
       const unaccepted = isUnaccepted(order)
       const expired = unaccepted && seconds === 0
@@ -216,7 +324,7 @@ const Orders = () => {
         {order.status_reason && order.status !== 'disputed' && <p className={styles.notes}>{order.status_reason}</p>}
         {order.status === 'rejected' && <p>Credits could not be reserved. Check your balance before creating another request.</p>}
         <div className={styles.cardActions}>
-          {order.status === 'open' && !expired && !own && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'accept')}>{busy === order.id ? 'Updating…' : 'Accept request'}</button>}
+          {order.status === 'open' && !expired && !own && <button className={styles.primary} disabled={busy !== null || !!loadError} aria-haspopup="dialog" onClick={() => setAcceptOrder(order)}>{busy === order.id ? 'Updating…' : 'Accept request'}</button>}
           {order.status === 'open' && !expired && own && <button disabled={busy !== null || !!loadError} onClick={() => setCancelOrder(order)}>Cancel request</button>}
           {own && view === 'open' && <small>Your request · You cannot accept it</small>}
           {assigned && order.status === 'accepted' && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'pickup')}>Mark picked up</button>}

@@ -175,3 +175,28 @@ class CreditCommandResult(Base):
     received_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.clock_timestamp(),
     )
+
+class OrderAuditLog(Base):
+    __tablename__ = "order_audit_logs"
+
+    log_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, default=uuid4,
+    )
+    order_id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True),
+        ForeignKey("errand_requests.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # nullable because system triggered events dont have an actor
+    actor_id: Mapped[UUID | None] = mapped_column(
+        PostgresUUID(as_uuid=True), nullable=True,
+    )
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.clock_timestamp(),
+    )
+
+    __table_args__ = (
+        Index("order_audit_logs_order_id_idx", "order_id", "created_at"),
+    )

@@ -20,6 +20,7 @@ from orders.orm_models import (
     CreditStatus,
     ErrandRequest,
     Status,
+    OrderAuditLog
 )
 
 
@@ -123,6 +124,56 @@ async def _lock_order(session: AsyncSession, order_id: UUID) -> bool:
     ) is not None
 
 
+def record_order_audit_log(
+        session: AsyncSession,
+        order_id: UUID,
+        action: Status,
+        actor_id: UUID | None = None,
+        reason: str | None = None,
+) -> None:
+    session.add(OrderAuditLog(
+        order_id=order_id,
+        actor_id=actor_id,
+        action=action.value,
+        reason=reason,
+    ))
+
+
+async def get_order_audit_logs(
+        session: AsyncSession, order_id: UUID,
+) -> list[OrderAuditLog]:
+    statement = (
+        select(OrderAuditLog)
+        .where(OrderAuditLog.order_id == order_id)
+        .order_by(OrderAuditLog.created_at.asc(), OrderAuditLog.log_id.asc())
+    )
+    result = await session.execute(statement)
+    return list(result.scalars().all())
+
+
+async def accept_order(session: AsyncSession, order_id: UUID, courier_id: UUID) -> ErrandRequest | None:
+    if not await _lock_order(session, order_id):
+        await session.commit()
+        return None
+
+    now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+    stmt = (update(ErrandRequest)
+            .where(ErrandRequest.id == order_id, ErrandRequest.status == Status.OPEN,
+                   ErrandRequest.expires_at > now, ErrandRequest.courier_id.is_(None),
+                   ErrandRequest.requester_id != courier_id)
+            .values(status=Status.ACCEPTED, courier_id=courier_id, accepted_at=now,
+                    progress_due_at=now + progress_window(), updated_at=now)
+            .returning(ErrandRequest))
+
+    result = await session.execute(stmt)
+    order = result.scalar_one_or_none()
+
+    if order is not None:
+        record_order_audit_log(session, order.id, Status.ACCEPTED, actor_id=courier_id)
+
+    await session.commit()
+    return order
+
 async def pickup_order(session: AsyncSession, order_id: UUID,
                         courier_id: UUID,) -> ErrandRequest | None:
     if not await _lock_order(session, order_id):
@@ -143,6 +194,9 @@ async def pickup_order(session: AsyncSession, order_id: UUID,
 
     result = await session.execute(stmt)
     order = result.scalar_one_or_none()
+
+    if order is not None:
+        record_order_audit_log(session, order.id, Status.PICKED_UP, actor_id=courier_id)
 
     await session.commit()
 
@@ -172,6 +226,9 @@ async def deliver_order(session: AsyncSession, order_id: UUID,
     result = await session.execute(stmt)
     order = result.scalar_one_or_none()
 
+    if order is not None:
+        record_order_audit_log(session, order.id, Status.DELIVERED, actor_id=courier_id)
+
     await session.commit()
 
     return order
@@ -191,6 +248,7 @@ async def cancel_order(session: AsyncSession, order_id: UUID, requester_id: UUID
     order = result.scalar_one_or_none()
     if order is not None:
         add_credit_command(session, ReleaseCreditCommand(request_id=uuid4(), order_id=order.id))
+        record_order_audit_log(session, order.id, Status.CANCELLED, actor_id=requester_id)
 
     await session.commit()
     return order
@@ -219,6 +277,7 @@ async def receive_order(session: AsyncSession, order_id: UUID, requester_id: UUI
         assert order.courier_id is not None  # Required by the UPDATE predicate.
         add_credit_command(session, TransferCreditCommand(
             request_id=uuid4(), order_id=order.id, courier_id=order.courier_id,))
+        record_order_audit_log(session, order.id, Status.RECEIVED, actor_id=requester_id)
 
     await session.commit()
     return order
@@ -254,6 +313,9 @@ async def dispute_order(
     order.status = Status.DISPUTED
     order.status_reason = reason
     order.updated_at = (await session.execute(select(func.clock_timestamp()))).scalar_one()
+
+    record_order_audit_log(session, order.id, Status.DISPUTED, actor_id=actor_id, reason=reason)
+
     await session.commit()
     return order
 
@@ -264,17 +326,20 @@ async def expire_initializing_orders(session: AsyncSession) -> list[UUID]:
     Do not release yet: Credit may not have created the reservation. A late
     reservation success queues its compensating release in credit_results.
     """
+    reason = ("Credit reservation was not confirmed within the initialization deadline. "
+              "Any delayed reservation will be refunded automatically.")
     result = await session.execute(
         update(ErrandRequest)
         .where(ErrandRequest.status == Status.INIT,
                ErrandRequest.created_at + init_window() <= func.clock_timestamp())
-        .values(status=Status.EXPIRED,
-                status_reason="Credit reservation was not confirmed within the initialization deadline. "
-                              "Any delayed reservation will be refunded automatically.",
-                updated_at=func.clock_timestamp())
+        .values(status=Status.EXPIRED, status_reason=reason, updated_at=func.clock_timestamp())
         .returning(ErrandRequest.id)
     )
     expired_ids = list(result.scalars())
+
+    for order_id in expired_ids:
+        record_order_audit_log(session, order_id, Status.EXPIRED, reason=reason)
+
     await session.commit()
     return expired_ids
 
@@ -285,37 +350,35 @@ async def dispute_overdue_orders(session: AsyncSession) -> list[UUID]:
     PostgreSQL rechecks predicates after competing updates. A delayed settlement
     result may still update credit_status, but cannot exit DISPUTED.
     """
+    reason = "The deadline for fulfilment or credit settlement was exceeded."
     result = await session.execute(
         update(ErrandRequest)
         .where(or_(
-            and_(ErrandRequest.status.in_(
-                     (Status.ACCEPTED, Status.PICKED_UP, Status.DELIVERED)),
+            and_(ErrandRequest.status.in_((Status.ACCEPTED, Status.PICKED_UP, Status.DELIVERED)),
                  ErrandRequest.progress_due_at <= func.clock_timestamp()),
             and_(ErrandRequest.status == Status.RECEIVED,
                  ErrandRequest.credit_status == CreditStatus.PENDING,
                  ErrandRequest.settlement_due_at <= func.clock_timestamp()),
         ))
-        .values(status=Status.DISPUTED,
-                status_reason="The deadline for fulfilment or credit settlement was exceeded.",
-                updated_at=func.clock_timestamp())
+        .values(status=Status.DISPUTED, status_reason=reason, updated_at=func.clock_timestamp())
         .returning(ErrandRequest.id)
     )
     disputed_ids = list(result.scalars())
+
+    for order_id in disputed_ids:
+        record_order_audit_log(session, order_id, Status.DISPUTED, reason=reason)
+
     await session.commit()
     return disputed_ids
 
 
 async def expire_orders(session: AsyncSession) -> list[UUID]:
+    reason = "No courier accepted the order within the time limit."
     result = await session.execute(
         update(ErrandRequest)
-        .where(ErrandRequest.status == Status.OPEN,
-               ErrandRequest.expires_at <= func.clock_timestamp())
-        .values(
-            status=Status.EXPIRED,
-            credit_status=CreditStatus.PENDING,
-            status_reason="No courier accepted the order within the time limit.",
-            updated_at=func.clock_timestamp()
-        )
+        .where(ErrandRequest.status == Status.OPEN, ErrandRequest.expires_at <= func.clock_timestamp())
+        .values(status=Status.EXPIRED, credit_status=CreditStatus.PENDING,
+                status_reason=reason, updated_at=func.clock_timestamp())
         .returning(ErrandRequest.id)
     )
 
@@ -323,5 +386,33 @@ async def expire_orders(session: AsyncSession) -> list[UUID]:
 
     for order_id in expired_ids:
         add_credit_command(session, ReleaseCreditCommand(request_id=uuid4(), order_id=order_id))
+        record_order_audit_log(session, order_id, Status.EXPIRED, reason=reason)
+
     await session.commit()
     return expired_ids
+
+
+def record_order_audit_log(
+    session: AsyncSession,
+    order_id: UUID,
+    action: Status,
+    actor_id: UUID | None = None,
+    reason: str | None = None,
+) -> None:
+    session.add(OrderAuditLog(
+        order_id=order_id,
+        actor_id=actor_id,
+        action=action.value,
+        reason=reason,
+    ))
+
+async def get_order_audit_logs(
+    session: AsyncSession, order_id: UUID,
+) -> list[OrderAuditLog]:
+    statement = (
+        select(OrderAuditLog)
+        .where(OrderAuditLog.order_id == order_id)
+        .order_by(OrderAuditLog.created_at.asc(), OrderAuditLog.log_id.asc())
+    )
+    result = await session.execute(statement)
+    return list(result.scalars().all())

@@ -51,6 +51,12 @@
 .empty { text-align: center; padding: 50px 20px; border: 1px dashed #cdd7c9; border-radius: 10px; color: #627165; }
 .empty h3 { color: #354d3b; }
 .error { background: #fff2eb; border: 1px solid #e8c9b7; color: #7d3e27; padding: 16px; border-radius: 8px; margin-bottom: 24px; font-size: 14px; }
+.notice { background: #f7f6ed; border: 1px solid #e1ddc8; color: #5d5942; padding: 18px 20px; border-radius: 10px; margin: 0 0 20px; font-size: 14px; line-height: 1.6; }
+.notice strong { display: block; font-size: 14px; font-family: inherit; font-weight: 600; margin: 0; }
+.notice p { margin: 6px 0 12px; max-width: none; color: inherit; }
+.wallet .notice { flex: 1 1 280px; min-width: 0; margin: 0; }
+.wallet .notice strong { font-size: 14px; font-family: inherit; font-weight: 600; margin: 0; }
+.wallet .notice p { margin: 6px 0 12px; max-width: none; color: inherit; }
 @media (max-width: 700px) {
   .page { padding: 30px 18px 60px; }
   .heading { align-items: flex-start; flex-direction: column; }

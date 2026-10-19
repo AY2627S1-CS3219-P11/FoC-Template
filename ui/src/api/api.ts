@@ -1,6 +1,7 @@
 import type { APIRequest, APIService, EndpointConfigEntry } from './models';
 import { CampusErrandsAPIError } from './models';
 import { routes } from '../routes';
+import { consumeOrderCreateResponseLoss } from './orderDemo';
 
 const apiUrls: Record<APIService, string> = {
     supplier: import.meta.env.VITE_SUPPLIER_API_URL || '/supplier-api',
@@ -91,27 +92,48 @@ const parseResponse = async <T>(response: Response): Promise<T> => {
 };
 
 const getErrorMessage = (data: unknown, fallback: string): string => {
+    // Proxy error pages and plain-text diagnostics are not user-facing messages.
+    const safeMessage = (value: unknown): value is string =>
+        typeof value === 'string' && value.trim().length > 0 &&
+        value.length <= 300 && !/[<>]/.test(value);
     if (typeof data === 'string') {
-        return data;
+        return fallback;
     }
     if (!data || typeof data !== 'object') {
         return fallback;
     }
 
     const errorBody = data as { detail?: unknown; message?: unknown };
-    if (typeof errorBody.message === 'string') {
+    if (safeMessage(errorBody.message)) {
         return errorBody.message;
     }
-    if (typeof errorBody.detail === 'string') {
+    if (safeMessage(errorBody.detail)) {
         return errorBody.detail;
     }
 
     return fallback;
 };
 
-const sendRequest = async <TResponse>({ init, url }: RequestDetails): Promise<TResponse> => {
-    const response = await fetch(url, init);
-    const data = await parseResponse<TResponse>(response);
+const serviceNames: Record<APIService, string> = {
+    user: 'Account', supplier: 'Supplier', order: 'Order', credit: 'Credit',
+};
+
+const sendRequest = async <TResponse>({ init, url }: RequestDetails, service: APIService): Promise<TResponse> => {
+    const unavailable = `${serviceNames[service]} services are temporarily unavailable. Please try again shortly.`;
+    let response: Response;
+    try {
+        response = await fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
+    } catch {
+        throw new CampusErrandsAPIError(unavailable, 0);
+    }
+    let data: TResponse | null;
+    try {
+        data = await parseResponse<TResponse>(response);
+    } catch {
+        // Preserve HTTP status (especially 401) even if the error body is invalid.
+        if (response.ok) throw new CampusErrandsAPIError(unavailable, 502);
+        data = null;
+    }
     const contentType = response.headers?.get('content-type') ?? '';
 
     if (
@@ -120,15 +142,19 @@ const sendRequest = async <TResponse>({ init, url }: RequestDetails): Promise<TR
         typeof data === 'string' &&
         /<!doctype html|<html[\s>]/i.test(data)
     ) {
-        throw new CampusErrandsAPIError('The API returned an unexpected HTML page.', 502);
+        throw new CampusErrandsAPIError(unavailable, 502);
     }
 
     if (!response.ok) {
-        const message = getErrorMessage(data, response.statusText || 'Unknown error');
+        const fallback = response.status === 401 ? 'Please sign in again to continue.'
+            : response.status === 403 ? 'You do not have permission to do that.'
+            : response.status === 429 ? 'Too many attempts. Please wait a moment and try again.'
+            : 'We couldn’t complete that request. Please try again.';
+        const message = response.status >= 500 ? unavailable : getErrorMessage(data, fallback);
         throw new CampusErrandsAPIError(message, response.status, data);
     }
 
-    return data;
+    return data as TResponse;
 };
 
 export const makeCampusErrandsAPIRequest = async <TRequest extends APIRequest, TResponse>(
@@ -138,7 +164,12 @@ export const makeCampusErrandsAPIRequest = async <TRequest extends APIRequest, T
 ): Promise<TResponse> => {
     const details = buildRequest(request, config);
     details.init.headers = { ...details.init.headers, ...headers };
-    return await sendRequest<TResponse>(details);
+    const response = await sendRequest<TResponse>(details, config.service);
+    if (consumeOrderCreateResponseLoss(config)) {
+        // The real successful response was consumed, but the caller sees a lost receipt.
+        throw new CampusErrandsAPIError('Order receipt was lost. Retrying is safe with the same idempotency key.', 0);
+    }
+    return response;
 };
 
 const redirectToSignIn = (): void => {

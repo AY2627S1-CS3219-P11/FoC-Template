@@ -26,6 +26,7 @@ from credit.models import (
     CreditResponse,
     ReleaseCreditCommand,
     ReserveCreditCommand,
+    StoredCreditOutcome,
     TransferCreditCommand,
     UserCreated,
 )
@@ -59,9 +60,9 @@ async def process_credit_command(
             raise CreditConsistencyError("The command's outbox record is missing.")
 
         if not claimed:
-            outcome = CreditOutboxResponse.model_validate(entry).payload
-            original = outcome.model_dump(include=set(type(command).model_fields))
-            if outcome.operation != command.operation or original != command.model_dump():
+            stored = CreditOutboxResponse.model_validate(entry).payload
+            outcome = stored.result
+            if outcome.operation != command.operation or stored.command != command.model_dump(mode="json"):
                 raise CreditRequestConflictError("Request ID was reused for another command.")
             entry.published_at = None
             return outcome
@@ -92,16 +93,18 @@ async def process_credit_command(
             reason = CreditRejectionReason.RESERVATION_CONFLICT
 
         outcome = CreditOperationResult(
-            **command.model_dump(),
+            request_id=command.request_id,
+            order_id=command.order_id,
             operation=command.operation,
             outcome=(
                 CreditOperationOutcome.REJECTED
                 if reason is not None else CreditOperationOutcome.SUCCEEDED
             ),
-            reservation=reservation,
             reason=reason,
         )
-        entry.payload = outcome.model_dump_json()
+        entry.payload = StoredCreditOutcome(
+            command=command.model_dump(mode="json"), result=outcome,
+        ).model_dump_json()
         await session.flush()
         return outcome
 

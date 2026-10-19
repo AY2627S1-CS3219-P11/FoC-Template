@@ -3,7 +3,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { CampusErrandsAPIError } from '../../../api/models'
 import { useCampusErrandsAPI } from '../../../api/useCampusErrandsAPI'
 import AuthLayout from '../../../components/authLayout/AuthLayout'
-import { useToast } from '../../../components/toast/useToast'
 import { routes } from '../../../routes'
 import styles from '../Authentication.module.css'
 
@@ -16,10 +15,10 @@ const SignIn = () => {
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [isPending, setIsPending] = useState(false)
+  const [error, setError] = useState('')
   const api = useCampusErrandsAPI()
   const location = useLocation()
   const navigate = useNavigate()
-  const { showErrorToast } = useToast()
   const returnTo = (location.state as AuthenticationNavigationState | null)?.returnTo
 
   useEffect(() => {
@@ -38,12 +37,15 @@ const SignIn = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setIsPending(true)
+    setError('')
 
     try {
       await api.user.authentication.signIn({ email: email.trim().toLowerCase(), password })
       navigate(returnTo ?? routes.home, { replace: true })
     } catch (requestError) {
-      showErrorToast(requestError instanceof CampusErrandsAPIError ? requestError.message : 'Unable to sign in. Please try again.')
+      setError(requestError instanceof CampusErrandsAPIError
+        ? requestError.status === 401 ? 'The email or password is incorrect. Please try again.' : requestError.message
+        : 'Unable to sign in. Please try again.')
     } finally {
       setIsPending(false)
     }
@@ -91,6 +93,7 @@ const SignIn = () => {
             </button>
           </div>
         </div>
+        {error && <p className={styles.error} role="alert">{error}</p>}
         <button className={styles.submit} type="submit" disabled={isPending}>
           {isPending ? 'Signing in…' : 'Sign In'}
         </button>
