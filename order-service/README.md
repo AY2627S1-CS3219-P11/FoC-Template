@@ -30,6 +30,11 @@ receipt confirmation queues a transfer, setting credit status to `pending`.
 Transfer success completes the order; rejection leaves `(received, rejected)`.
 Release results never reopen cancelled or expired orders.
 
+Credit replies contain only `request_id`, `order_id`, `operation`, `outcome`, and
+`reason` (null on success, required on rejection). Order correlates each reply with
+its stored command and records it atomically with state changes; duplicate replies
+are harmless. Credit owns financial validation.
+
 Missing replies trigger command replay. Explicit rejections are terminal outcomes,
 not automatically retried. `status_reason` explains expiry or dispute, including
 initialization failures where no credits were reserved and no refund is needed.

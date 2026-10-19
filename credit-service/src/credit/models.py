@@ -1,9 +1,9 @@
 import datetime
 from enum import StrEnum
-from uuid import UUID
 from typing import Literal, Self
+from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, Json, model_validator
+from pydantic import BaseModel, ConfigDict, Field, Json, JsonValue, model_validator
 
 
 class CreditOperation(StrEnum):
@@ -140,34 +140,33 @@ class TransferCreditCommand(BaseModel):
 type CreditCommand = ReserveCreditCommand | ReleaseCreditCommand | TransferCreditCommand
 
 
-# Payload saved in Credit's outbox and sent to Order
 class CreditOperationResult(BaseModel):
-    event: Literal[MessageType.CREDIT_OPERATION_RESULT] = MessageType.CREDIT_OPERATION_RESULT
     request_id: UUID
     order_id: UUID
     operation: CreditOperation
     outcome: CreditOperationOutcome
-    requester_id: UUID | None = None
-    courier_id: UUID | None = None
-    amount: int | None = Field(default=None, ge=1, le=MAX_CREDITS, strict=True)
-    reservation: CreditReservationResult | None = None
     reason: CreditRejectionReason | None = None
 
     @model_validator(mode="after")
     def validate_outcome(self) -> Self:
         if self.outcome == CreditOperationOutcome.SUCCEEDED:
-            if self.reservation is None or self.reason is not None:
-                raise ValueError("A successful outcome requires a reservation result only.")
-            if self.reservation.order_id != self.order_id:
-                raise ValueError("The reservation must belong to the outcome's order.")
-        elif self.reason is None or self.reservation is not None:
-            raise ValueError("A rejected outcome requires a rejection reason only.")
+            if self.reason is not None:
+                raise ValueError("A successful outcome cannot have a rejection reason.")
+        elif self.reason is None:
+            raise ValueError("A rejected outcome requires a rejection reason.")
         return self
+
+
+class StoredCreditOutcome(BaseModel):
+    """Store the command for retry checks; publish only the result."""
+
+    command: dict[str, JsonValue]
+    result: CreditOperationResult
 
 
 class CreditOutboxResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     request_id: UUID
-    payload: Json[CreditOperationResult]
+    payload: Json[StoredCreditOutcome]
     published_at: datetime.datetime | None = None

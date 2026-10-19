@@ -12,11 +12,17 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from orders import creation, credit_results, repository
 from orders.models import (
-    CreditOperation, CreditOperationOutcome, CreditReservationResult,
-    CreditReservationStatus, CreditResult,
+    CreditOperation,
+    CreditOperationOutcome,
+    CreditResult,
 )
 from orders.orm_models import (
-    Base, CreditCommandOutbox, CreditStatus, ErrandRequest, OrderCreationKey, Status,
+    Base,
+    CreditCommandOutbox,
+    CreditStatus,
+    ErrandRequest,
+    OrderCreationKey,
+    Status,
 )
 
 
@@ -78,14 +84,10 @@ class OrderDatabaseTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await repository.expire_initializing_orders(session), [order.id])
             reserve = await session.scalar(select(CreditCommandOutbox).where(
                 CreditCommandOutbox.order_id == order.id))
-            now = await session.scalar(select(func.clock_timestamp()))
             reply = CreditResult(
-                **reserve.payload, operation=CreditOperation.RESERVE,
+                request_id=reserve.id, order_id=order.id,
+                operation=CreditOperation.RESERVE,
                 outcome=CreditOperationOutcome.SUCCEEDED,
-                reservation=CreditReservationResult(
-                    order_id=order.id, user_id=self.requester, amount=10,
-                    status=CreditReservationStatus.RESERVED, created_at=now, updated_at=now,
-                ),
             )
             for _ in range(2):
                 await credit_results.handle_reservation_result(session, reply)
@@ -98,8 +100,6 @@ class OrderDatabaseTests(unittest.IsolatedAsyncioTestCase):
             release = next(c for c in commands if c.routing_key == "credit.release")
             released = reply.model_copy(update={
                 "request_id": release.id, "operation": CreditOperation.RELEASE,
-                "requester_id": None, "amount": None,
-                "reservation": reply.reservation.model_copy(update={"status": CreditReservationStatus.RELEASED}),
             })
             await credit_results.handle_release_result(session, released)
             await session.commit()
@@ -123,15 +123,10 @@ class OrderDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 CreditCommandOutbox.order_id == order.id,
                 CreditCommandOutbox.routing_key == "credit.transfer",
             ))
-            now = await session.scalar(select(func.clock_timestamp()))
             reply = CreditResult(
-                **transfer.payload, operation=CreditOperation.TRANSFER,
+                request_id=transfer.id, order_id=order.id,
+                operation=CreditOperation.TRANSFER,
                 outcome=CreditOperationOutcome.SUCCEEDED,
-                reservation=CreditReservationResult(
-                    order_id=order.id, user_id=self.requester, amount=10,
-                    status=CreditReservationStatus.TRANSFERRED, recipient_user_id=courier,
-                    created_at=now, updated_at=now,
-                ),
             )
             await credit_results.handle_transfer_result(session, reply)
             await session.commit()

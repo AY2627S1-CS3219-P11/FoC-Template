@@ -1,6 +1,5 @@
-from datetime import datetime
 from enum import StrEnum
-from typing import ClassVar, Literal, Self
+from typing import ClassVar, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
@@ -17,12 +16,6 @@ class CreditOperation(StrEnum):
 class CreditOperationOutcome(StrEnum):
     SUCCEEDED = "SUCCEEDED"
     REJECTED = "REJECTED"
-
-
-class CreditReservationStatus(StrEnum):
-    RESERVED = "RESERVED"
-    RELEASED = "RELEASED"
-    TRANSFERRED = "TRANSFERRED"
 
 
 class CreditRejectionReason(StrEnum):
@@ -70,55 +63,18 @@ class TransferCreditCommand(BaseModel):
 type CreditCommand = ReserveCreditCommand | ReleaseCreditCommand | TransferCreditCommand
 
 
-class CreditReservationResult(BaseModel):
-    order_id: UUID
-    user_id: UUID
-    amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
-    status: CreditReservationStatus
-    recipient_user_id: UUID | None = None
-    created_at: datetime
-    updated_at: datetime
-
-
 class CreditResult(BaseModel):
-    event: Literal["CreditOperationResult"] = "CreditOperationResult"
     request_id: UUID
     order_id: UUID
     operation: CreditOperation
-    # Credit echoes operation-specific command fields in the same wire envelope.
-    requester_id: UUID | None = None
-    courier_id: UUID | None = None
-    amount: int | None = Field(default=None, ge=1, le=MAX_CREDITS, strict=True)
     outcome: CreditOperationOutcome
-    reservation: CreditReservationResult | None = None
     reason: CreditRejectionReason | None = None
 
     @model_validator(mode="after")
     def validate_outcome(self) -> Self:
-        if self.operation == CreditOperation.RESERVE:
-            if self.requester_id is None or self.amount is None:
-                raise ValueError("A reserve reply requires requester_id and amount.")
-        elif self.operation == CreditOperation.TRANSFER and self.courier_id is None:
-            raise ValueError("A transfer reply requires courier_id.")
-
         if self.outcome == CreditOperationOutcome.SUCCEEDED:
-            if self.reservation is None or self.reason is not None:
-                raise ValueError(
-                    "A successful outcome requires a reservation result only."
-                )
-            if self.reservation.order_id != self.order_id:
-                raise ValueError("The reservation must belong to the outcome's order.")
-            match self.operation:
-                case CreditOperation.RESERVE:
-                    expected_status = CreditReservationStatus.RESERVED
-                case CreditOperation.RELEASE:
-                    expected_status = CreditReservationStatus.RELEASED
-                case CreditOperation.TRANSFER:
-                    expected_status = CreditReservationStatus.TRANSFERRED
-            if self.reservation.status != expected_status:
-                raise ValueError(
-                    "Reservation status does not match the successful operation."
-                )
-        elif self.reason is None or self.reservation is not None:
-            raise ValueError("A rejected outcome requires a rejection reason only.")
+            if self.reason is not None:
+                raise ValueError("A successful outcome cannot have a rejection reason.")
+        elif self.reason is None:
+            raise ValueError("A rejected outcome requires a rejection reason.")
         return self

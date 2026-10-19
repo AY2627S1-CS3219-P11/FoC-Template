@@ -36,17 +36,9 @@ async def handle_reservation_result(
     pending = await _load_stored_request(
         session, result, ReserveCreditCommand.routing_key
     )
-    command = ReserveCreditCommand.model_validate(pending.payload)
-    if command.requester_id != result.requester_id or command.amount != result.amount:
-        raise ValueError(
-            "Credit result does not match the original reservation request"
-        )
-
     order = await _load_order_unless_duplicate(session, result)
     if order is None:
         return
-    if command.requester_id != order.requester_id or command.amount != order.credits:
-        raise ValueError("Credit reservation does not match the order")
 
     now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
     # Enforce the timeout even when a reply beats the periodic sweep.
@@ -97,7 +89,6 @@ async def handle_reservation_result(
 
 async def handle_release_result(session: AsyncSession, result: CreditResult) -> None:
     pending = await _load_stored_request(session, result, ReleaseCreditCommand.routing_key)
-    ReleaseCreditCommand.model_validate(pending.payload)
     order = await _load_order_unless_duplicate(session, result)
     if order is None:
         return
@@ -123,22 +114,12 @@ async def handle_transfer_result(session: AsyncSession, result: CreditResult) ->
     pending = await _load_stored_request(
         session, result, TransferCreditCommand.routing_key
     )
-    command = TransferCreditCommand.model_validate(pending.payload)
-    if command.courier_id != result.courier_id:
-        raise ValueError("Credit result does not match the original transfer request")
-
     order = await _load_order_unless_duplicate(session, result)
     if order is None:
         return
-    if command.courier_id != order.courier_id:
-        raise ValueError("Credit transfer does not match the assigned courier")
 
     match result.outcome:
         case CreditOperationOutcome.SUCCEEDED:
-            reservation = result.reservation
-            assert reservation is not None  # Validated when loading the order.
-            if reservation.recipient_user_id != order.courier_id:
-                raise ValueError("Credit transfer contains an unexpected recipient")
             if order.status in (Status.RECEIVED, Status.DISPUTED):
                 now = (await session.execute(select(func.clock_timestamp()))).scalar_one()
                 _dispute_late_settlement(order, now)
@@ -171,10 +152,7 @@ async def _load_stored_request(
     result: CreditResult,
     routing_key: RoutingKey,
 ) -> CreditCommandOutbox:
-    """Lock the original command and check its route and identifiers.
-
-    Each handler explicitly parses its own command payload afterward.
-    """
+    """Lock the original command and correlate the reply by order and operation."""
     pending = await session.scalar(
         select(CreditCommandOutbox)
         .where(CreditCommandOutbox.id == result.request_id)
@@ -186,8 +164,6 @@ async def _load_stored_request(
 
     if (
         pending.order_id != result.order_id
-        or str(pending.payload.get("request_id")) != str(result.request_id)
-        or str(pending.payload.get("order_id")) != str(result.order_id)
         or pending.routing_key != routing_key
     ):
         raise ValueError("Credit result does not match the original command")
@@ -198,7 +174,7 @@ async def _load_order_unless_duplicate(
     session: AsyncSession,
     result: CreditResult,
 ) -> ErrandRequest | None:
-    """Skip identical receipts, otherwise lock the order and validate reservation details.
+    """Skip identical receipts, otherwise lock the order.
 
     Call only after verifying and locking the stored request. Its lock serializes
     replies for that request until the consumer commits the transaction.
@@ -217,15 +193,6 @@ async def _load_order_unless_duplicate(
     )
     if order is None:
         raise ValueError("Credit result references an unknown order")
-    if result.outcome == CreditOperationOutcome.SUCCEEDED:
-        reservation = result.reservation
-        if (
-            reservation is None
-            or reservation.order_id != order.id
-            or reservation.user_id != order.requester_id
-            or reservation.amount != order.credits
-        ):
-            raise ValueError("Credit result contains unexpected reservation details")
     return order
 
 
