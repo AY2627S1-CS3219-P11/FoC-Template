@@ -1,6 +1,7 @@
-from collections.abc import AsyncIterator
+from typing import cast
 
 import httpx
+from fastapi import Request
 from pydantic import AnyHttpUrl, ValidationError
 
 from common.config_manager import settings
@@ -26,7 +27,5 @@ def get_internal_gateway_url() -> str:
     return str(url).rstrip("/")
 
 
-async def get_internal_gateway_client() -> AsyncIterator[httpx.AsyncClient]:
-    base_url = get_internal_gateway_url()
-    async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
-        yield client
+async def get_internal_gateway_client(request: Request) -> httpx.AsyncClient:
+    return cast(httpx.AsyncClient, request.app.state.internal_gateway_client)

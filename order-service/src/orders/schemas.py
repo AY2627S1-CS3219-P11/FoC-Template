@@ -4,8 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from orders.orm_models import Status
-
+from orders.orm_models import CreditStatus, Status
 
 MAX_CREDITS = 9_223_372_036_854_775_807
 
@@ -23,6 +22,10 @@ class CreateOrderRequest(BaseModel):
     items: list[OrderItem] = Field(min_length=1)
     pickup_notes: str | None = None
     credits: int = Field(ge=1, le=MAX_CREDITS)
+
+
+class DisputeOrderRequest(BaseModel):
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 
 
 class SupplierSnapshot(BaseModel):
@@ -50,8 +53,16 @@ class OrderResponse(BaseModel):
     pickup_notes: str | None
     credits: int
     status: Status
+    credit_status: CreditStatus
     courier_id: UUID | None
     created_at: datetime
     expires_at: datetime
     accepted_at: datetime | None
+    progress_due_at: datetime | None
+    settlement_due_at: datetime | None
+    status_reason: str | None
     updated_at: datetime
+
+
+class ServerClockResponse(BaseModel):
+    server_time: datetime

@@ -31,7 +31,8 @@ const Home = () => {
           <article>
             <span>02</span>
             <h2>Help nearby</h2>
-            <p>Pick up an open request that already fits your route across campus.</p>
+            <p>Pick up an open request that already fits your route across campus—even while someone helps with yours.</p>
+            <Link to="/orders">Explore orders</Link>
           </article>
           <article>
             <span>03</span>

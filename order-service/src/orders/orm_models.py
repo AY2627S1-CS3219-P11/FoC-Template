@@ -6,7 +6,6 @@ from sqlalchemy import (
     BigInteger,
     CheckConstraint,
     DateTime,
-    Enum as SQLEnum,
     ForeignKey,
     Index,
     Integer,
@@ -16,8 +15,12 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy import (
+    Enum as SQLEnum,
+)
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PostgresUUID
 
 
 class Base(DeclarativeBase):
@@ -33,9 +36,16 @@ class Status(str, Enum):
     COMPLETED = "completed"
     CANCELLED = "cancelled"
     EXPIRED = "expired"
-    PENDING = "pending"
+    DISPUTED = "disputed"
+    INIT = "init"
     REJECTED = "rejected"
-    
+
+
+class CreditStatus(str, Enum):
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    REJECTED = "rejected"
+
 
 class ErrandRequest(Base):
     __tablename__ = "errand_requests"
@@ -64,7 +74,14 @@ class ErrandRequest(Base):
         SQLEnum(Status, name="request_status", 
                 values_callable=lambda enum: [e.value for e in enum],),
         nullable=False,
-        default=Status.PENDING,
+        default=Status.INIT,
+    )
+
+    credit_status: Mapped[CreditStatus] = mapped_column(
+        SQLEnum(CreditStatus, name="order_credit_status",
+                values_callable=lambda enum: [e.value for e in enum]),
+        nullable=False,
+        default=CreditStatus.PENDING,
     )
 
     courier_id: Mapped[UUID | None] = mapped_column(
@@ -83,6 +100,16 @@ class ErrandRequest(Base):
     accepted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
     )
+
+    progress_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    settlement_due_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+    )
+
+    status_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=func.clock_timestamp(),

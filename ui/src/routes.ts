@@ -5,4 +5,5 @@ export const routes = {
   profile: '/profile',
   adminManagerPortal: '/admin-manager-portal',
   suppliers: '/suppliers',
+  orders: '/orders',
 } as const

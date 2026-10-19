@@ -19,9 +19,12 @@ export default defineConfig(({ mode, command }) => {
         '/supplier-api': { ...gatewayProxy },
         '/user-api': { ...gatewayProxy },
         '/credit-api': { ...gatewayProxy },
+        '/order-api': { ...gatewayProxy },
       },
     },
     define: {
+      'import.meta.env.VITE_ORDER_API_URL': JSON.stringify(env.VITE_ORDER_API_URL || '/order-api'),
+      'import.meta.env.VITE_CREDIT_API_URL': JSON.stringify(env.VITE_CREDIT_API_URL || '/credit-api'),
       'import.meta.env.VITE_USER_API_URL': JSON.stringify(env.VITE_USER_API_URL || '/user-api'),
       'import.meta.env.VITE_SUPPLIER_API_URL': JSON.stringify(env.VITE_SUPPLIER_API_URL || '/supplier-api'),
     },

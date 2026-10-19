@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import type { Order, CreateOrderRequest, CreditBalance, OrderAction } from '../pages/orders/models'
 import { makeAuthenticatedCampusErrandsAPIRequest, makeCampusErrandsAPIRequest } from './api'
 import type { AuthenticatedRequestOptions } from './api'
 import { endpointConfig } from './endpointConfig'
@@ -79,6 +80,15 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
         { id }, endpointConfig.supplier.suppliers.remove,
       ),
   },
-  order: {},
-  credit: {},
+  order: {
+    open: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.open),
+    requested: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.requested),
+    assigned: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.assigned),
+    create: (request: CreateOrderRequest, idempotencyKey: string) => makeAuthenticatedCampusErrandsAPIRequest<CreateOrderRequest, Order>(request, endpointConfig.order.orders.create, { headers: { 'Idempotency-Key': idempotencyKey } }),
+    dispute: (id: string, reason: string) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string; reason: string }, Order>({ id, reason }, endpointConfig.order.orders.dispute),
+    update: (id: string, action: OrderAction) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string; action: OrderAction }, Order>({ id, action }, endpointConfig.order.orders.update),
+  },
+  credit: {
+    current: () => makeAuthenticatedCampusErrandsAPIRequest<null, CreditBalance>(null, endpointConfig.credit.credits.current),
+  },
 }), [])

@@ -19,7 +19,6 @@ from credit.models import (
 )
 from credit.service import create_credit_account, process_credit_command
 
-
 CREDIT_COMMAND_MODELS = {
     RoutingKey.CREDIT_RESERVE: ReserveCreditCommand,
     RoutingKey.CREDIT_RELEASE: ReleaseCreditCommand,

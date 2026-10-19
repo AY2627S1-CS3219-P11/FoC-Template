@@ -1,11 +1,9 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
-from typing import NamedTuple
 
 import aio_pika
-from aio_pika.abc import AbstractConnection, AbstractExchange
 from aio_pika.exceptions import AMQPConnectionError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -14,16 +12,11 @@ from orders.models import ExchangeName, RoutingKey
 from workers.outbox import publish_outbox_messages
 
 
-class MessagingResources(NamedTuple):
-    connection: AbstractConnection
-    credit_exchange: AbstractExchange
-
-
 @asynccontextmanager
 async def initialize_order_messaging(
     rabbitmq_url: str,
     session_factory: async_sessionmaker[AsyncSession],
-) -> AsyncIterator[MessagingResources]:
+) -> AsyncGenerator[None]:
     async with AsyncExitStack() as resources:
         connection = None
         for attempt in range(15):
@@ -66,7 +59,7 @@ async def initialize_order_messaging(
             name="credit-command-outbox-publisher",
         )
         resources.push_async_callback(_stop_task, task)
-        yield MessagingResources(connection, credit_exchange)
+        yield
 
 
 async def _stop_task(task: asyncio.Task[None]) -> None:

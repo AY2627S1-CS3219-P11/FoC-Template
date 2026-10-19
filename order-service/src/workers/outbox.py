@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta, timezone
 
@@ -9,9 +10,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from common.config_manager import settings
-from orders.models import COMMAND_MODELS
+from orders.models import RoutingKey
 from orders.repository import find_pending_credit_command
-
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -42,18 +42,27 @@ async def publish_next_outbox_message(session_factory: async_sessionmaker[AsyncS
         replay = outbox_message.published_at is not None
 
         try:
-            command = COMMAND_MODELS[outbox_message.routing_key].model_validate(outbox_message.payload)
-
-            if command.request_id != outbox_message.id or command.order_id != outbox_message.order_id:
+            # add_credit_command already validated the payload before storing it.
+            # Publish that wire payload unchanged, including on retries.
+            if outbox_message.routing_key not in (
+                RoutingKey.CREDIT_RESERVE,
+                RoutingKey.CREDIT_RELEASE,
+                RoutingKey.CREDIT_TRANSFER,
+            ):
+                raise ValueError("Unknown credit command routing key")
+            if (
+                outbox_message.payload.get("request_id") != str(outbox_message.id)
+                or outbox_message.payload.get("order_id") != str(outbox_message.order_id)
+            ):
                 raise ValueError("Outbox payload does not match its stored identifiers")
             
             confirmation = await exchange.publish(
                 aio_pika.Message(
-                    body=command.model_dump_json().encode("utf-8"),
+                    body=json.dumps(outbox_message.payload).encode("utf-8"),
                     content_type="application/json",
                     type=outbox_message.routing_key,
-                    message_id=str(command.request_id),
-                    correlation_id=str(command.request_id),
+                    message_id=str(outbox_message.id),
+                    correlation_id=str(outbox_message.id),
                     delivery_mode=aio_pika.DeliveryMode.PERSISTENT,),
                 routing_key=outbox_message.routing_key,
                 mandatory=True,

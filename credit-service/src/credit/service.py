@@ -8,9 +8,9 @@ from common.config_manager import settings
 from credit.exceptions import (
     CreditConsistencyError,
     CreditNotFoundError,
+    CreditRequestConflictError,
     CreditReservationConflictError,
     CreditReservationNotFoundError,
-    CreditRequestConflictError,
     InsufficientCreditsError,
 )
 from credit.models import (
@@ -34,16 +34,16 @@ from credit.repository import (
     claim_credit_command,
     find_credit_account_by_user_id,
     find_credit_audit_logs_by_user_id,
-    find_credit_reservation,
     find_credit_outcome,
+    find_credit_reservation,
     find_credit_transfer,
     insert_credit_account,
     insert_credit_reservation,
     lock_credit_accounts,
-    record_initial_credit_allocation,
-    record_credit_reservation,
     record_credit_release,
+    record_credit_reservation,
     record_credit_transfer,
+    record_initial_credit_allocation,
     sum_active_reservations,
 )
 
