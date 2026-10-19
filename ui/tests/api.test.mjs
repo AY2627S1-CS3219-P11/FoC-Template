@@ -7,10 +7,11 @@ import ts from 'typescript'
 
 // Compile the API modules in isolation; no browser or additional test dependencies needed.
 const directory = await mkdtemp(join(tmpdir(), 'campus-api-test-'))
-for (const [source, target] of [['src/api/api.ts', 'api'], ['src/api/models.ts', 'models'], ['src/routes.ts', 'routes']]) {
+for (const [source, target] of [['src/api/api.ts', 'api'], ['src/api/models.ts', 'models'], ['src/api/orderDemo.ts', 'orderDemo'], ['src/routes.ts', 'routes']]) {
   const code = (await readFile(new URL(`../${source}`, import.meta.url), 'utf8'))
     .replaceAll('import.meta.env', '({})')
     .replaceAll("'./models'", "'./models.mjs'")
+    .replaceAll("'./orderDemo'", "'./orderDemo.mjs'")
     .replaceAll("'../routes'", "'./routes.mjs'")
   await writeFile(join(directory, `${target}.mjs`), ts.transpileModule(code, {
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
@@ -25,6 +26,11 @@ const fail = async (message, status) => assert.rejects(request(null, config), (e
 afterEach(() => { globalThis.fetch = originalFetch })
 after(() => rm(directory, { recursive: true, force: true }))
 
+test('creation responses are unaffected unless the demo hook is armed', async () => {
+  assert.equal(globalThis.window?.orderDemo, undefined)
+  globalThis.fetch = async () => Response.json({ id: 'order-1' })
+  assert.deepEqual(await request({}, { service: 'order', url: '/orders', verb: 'POST' }), { id: 'order-1' })
+})
 test('proxy HTML is replaced with a friendly service message', async () => {
   globalThis.fetch = async () => new Response('<html>502 Bad Gateway nginx</html>', { status: 502, headers: { 'Content-Type': 'text/html' } })
   await fail('Account services are temporarily unavailable. Please try again shortly.', 502)

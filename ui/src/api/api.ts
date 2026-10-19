@@ -1,6 +1,7 @@
 import type { APIRequest, APIService, EndpointConfigEntry } from './models';
 import { CampusErrandsAPIError } from './models';
 import { routes } from '../routes';
+import { consumeOrderCreateResponseLoss } from './orderDemo';
 
 const apiUrls: Record<APIService, string> = {
     supplier: import.meta.env.VITE_SUPPLIER_API_URL || '/supplier-api',
@@ -163,7 +164,12 @@ export const makeCampusErrandsAPIRequest = async <TRequest extends APIRequest, T
 ): Promise<TResponse> => {
     const details = buildRequest(request, config);
     details.init.headers = { ...details.init.headers, ...headers };
-    return await sendRequest<TResponse>(details, config.service);
+    const response = await sendRequest<TResponse>(details, config.service);
+    if (consumeOrderCreateResponseLoss(config)) {
+        // The real successful response was consumed, but the caller sees a lost receipt.
+        throw new CampusErrandsAPIError('Order receipt was lost. Retrying is safe with the same idempotency key.', 0);
+    }
+    return response;
 };
 
 const redirectToSignIn = (): void => {
