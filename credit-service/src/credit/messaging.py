@@ -14,7 +14,7 @@ from credit.events import (
     consume_user_created,
 )
 from credit.models import ExchangeName, QueueName, RoutingKey
-from credit.publisher import run_credit_event_publisher
+
 
 class MessagingResources(NamedTuple):
     connection: AbstractConnection
@@ -23,18 +23,11 @@ class MessagingResources(NamedTuple):
     credit_exchange: AbstractExchange
     result_exchange: AbstractExchange
 
-async def _stop_task(task: asyncio.Task[None]) -> None:
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
 
 @asynccontextmanager
 async def initialize_messaging(
-    rabbitmq_url: str,
-    session_factory: async_sessionmaker[AsyncSession],
+        rabbitmq_url: str,
+        session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[MessagingResources]:
     async with AsyncExitStack() as resources:
         connection = None
@@ -77,18 +70,14 @@ async def initialize_messaging(
             user_exchange, routing_key=RoutingKey.CREDIT_ACCOUNTS_SYNC_REQUESTED,
         )
 
-        # Order sends credit commands here
         credit_exchange = await channel.declare_exchange(
             ExchangeName.CREDIT_COMMANDS, aio_pika.ExchangeType.DIRECT, durable=True,
         )
 
-        # Credit sends operation results here
         result_exchange = await channel.declare_exchange(
             ExchangeName.CREDIT_EVENTS, aio_pika.ExchangeType.DIRECT, durable=True,
         )
 
-        # Order validates users and order states
-        # Shared broker credentials allow other services to publish too
         command_queue = await channel.declare_queue(QueueName.CREDIT_COMMANDS, durable=True)
         await channel.declare_queue(QueueName.CREDIT_FAILED_COMMANDS, durable=True)
 
@@ -100,16 +89,11 @@ async def initialize_messaging(
                 consume_credit_command, session_factory=session_factory,
                 command_exchange=credit_exchange,
                 failed_exchange=channel.default_exchange,
+                result_exchange=result_exchange,
             ),
             no_ack=False,
         )
         resources.push_async_callback(command_queue.cancel, command_tag)
-
-        outbox_task = asyncio.create_task(
-            run_credit_event_publisher(session_factory, result_exchange),
-            name="credit-event-publisher"
-        )
-        resources.push_async_callback(_stop_task, outbox_task)
 
         yield MessagingResources(
             connection, channel, user_exchange, credit_exchange, result_exchange,

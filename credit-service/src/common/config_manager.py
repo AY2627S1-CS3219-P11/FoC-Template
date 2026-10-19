@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     rabbitmq_url: SecretStr | None = None
     internal_gateway_url: str | None = None
     initial_credit_allocation: int = Field(default=100, ge=1, le=9_223_372_036_854_775_807)
+    credit_command_max_retries: int = Field(default=5, ge=0)
 
     model_config = SettingsConfigDict(
         env_file=Path(__file__).resolve().parents[2] / ".env",

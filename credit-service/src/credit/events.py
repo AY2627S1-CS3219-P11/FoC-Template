@@ -32,6 +32,10 @@ from credit.models import (
     RoutingKey,
     TransferCreditCommand,
     UserCreated,
+    CreditCommand,
+    CreditOperationResult,
+    CreditOperationOutcome,
+    CreditRejectionReason,
 )
 from credit.service import create_credit_account, process_credit_command
 
@@ -99,6 +103,7 @@ async def consume_credit_command(
     session_factory: async_sessionmaker[AsyncSession],
     command_exchange: AbstractExchange,
     failed_exchange: AbstractExchange,
+    result_exchange: AbstractExchange,
 ) -> None:
     try:
         credit_command = CREDIT_COMMAND_MODELS[message.routing_key].model_validate_json(message.body)
@@ -110,7 +115,6 @@ async def consume_credit_command(
     try:
         async with session_factory() as session:
             outcome = await process_credit_command(session, credit_command)
-
     except CreditRequestConflictError:
         print(
             f"Credit request {credit_command.request_id} reused for another command; "
@@ -123,7 +127,7 @@ async def consume_credit_command(
             f"processing failed ({type(error).__name__})."
         )
         await _retry_or_retain_credit_command(
-            message, command_exchange, failed_exchange, error,
+            message, command_exchange, failed_exchange, result_exchange, credit_command, error,
         )
     else:
         try:
@@ -159,15 +163,18 @@ def _is_temporary_credit_failure(error: Exception) -> bool:
 
 # retry temporary gaps within the limit else retain the command for review
 async def _retry_or_retain_credit_command(
-    message: AbstractIncomingMessage,
-    command_exchange: AbstractExchange,
-    failed_exchange: AbstractExchange,
-    error: Exception,
+        message: AbstractIncomingMessage,
+        command_exchange: AbstractExchange,
+        failed_exchange: AbstractExchange,
+        result_exchange: AbstractExchange,
+        credit_command: CreditCommand,
+        error: Exception,
 ) -> None:
     headers = dict(message.headers)
     retry_count = message.headers.get(MessageHeader.RETRY_COUNT, 0)
     temporary = _is_temporary_credit_failure(error)
     reason = None
+
     if temporary and type(retry_count) is int and 0 <= retry_count < settings.credit_command_max_retries:
         await asyncio.sleep(2)
         headers[MessageHeader.RETRY_COUNT] = retry_count + 1
@@ -183,10 +190,32 @@ async def _retry_or_retain_credit_command(
             reason = CreditCommandFailureReason.INVALID_RETRY_METADATA
         else:
             reason = CreditCommandFailureReason.RETRIES_EXHAUSTED
+
         headers[MessageHeader.ORIGINAL_ROUTING_KEY] = message.routing_key
         headers[MessageHeader.FAILURE_REASON] = reason
         headers[MessageHeader.ERROR_TYPE] = type(error).__name__
         exchange, routing_key = failed_exchange, QueueName.CREDIT_FAILED_COMMANDS
+
+        # Send failure event to Order since the command will not be processed
+        outcome = CreditOperationResult(
+            **credit_command.model_dump(),
+            operation=credit_command.operation,
+            outcome=CreditOperationOutcome.REJECTED,
+            reason=CreditRejectionReason.INVALID_OPERATION,
+        )
+        try:
+            await result_exchange.publish(
+                aio_pika.Message(
+                    body=outcome.model_dump_json().encode("utf-8"),
+                    content_type="application/json",
+                    delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
+                ),
+                routing_key=RoutingKey.CREDIT_OPERATION_RESULT,
+                mandatory=True,
+                timeout=5,
+            )
+        except Exception as pub_error:
+            print(f"Could not publish failure event to Order service: {type(pub_error).__name__}")
 
     try:
         confirmation = await exchange.publish(
