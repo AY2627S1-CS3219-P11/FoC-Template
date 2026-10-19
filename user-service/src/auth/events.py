@@ -1,6 +1,5 @@
 import asyncio
-import datetime
-from time import timezone
+from datetime import datetime, timezone
 
 import aio_pika
 from aio_pika.abc import AbstractExchange, AbstractIncomingMessage
@@ -8,8 +7,12 @@ from pamqp.commands import Basic
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from auth.models import CreditAccountsSyncRequested, RoutingKey, UserCreatedOutboxResponse, UserCreated
-from auth.orm_models import UserCreatedOutbox
+from auth.models import (
+    CreditAccountsSyncRequested,
+    RoutingKey,
+    UserCreated,
+    UserCreatedOutboxResponse,
+)
 from auth.repository import enqueue_user_created_events, find_pending_user_event
 
 
@@ -42,8 +45,8 @@ async def consume_credit_accounts_sync_requested(
 
 
 async def publish_pending_user_events(
-        session_factory: async_sessionmaker[AsyncSession],
-        exchange: AbstractExchange,
+    session_factory: async_sessionmaker[AsyncSession],
+    exchange: AbstractExchange,
 ) -> None:
     try:
         for _ in range(100):
@@ -58,9 +61,6 @@ async def publish_pending_user_events(
                     user_id=outbox_response.user_id,
                     created_at=outbox_response.created_at,
                 )
-                if payload.user_id != outbox_response.user_id:
-                    raise ValueError("The stored event has a different user ID.")
-
                 async with asyncio.timeout(5):
                     confirmation = await exchange.publish(
                         aio_pika.Message(

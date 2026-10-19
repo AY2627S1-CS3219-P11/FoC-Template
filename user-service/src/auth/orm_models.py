@@ -66,5 +66,6 @@ class UserCreatedOutbox(Base):
     user_id: Mapped[UUID] = mapped_column(
         PostgresUUID(as_uuid=True), primary_key=True,
     )
-    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    event: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(nullable=False)
     published_at: Mapped[datetime.datetime | None] = mapped_column(nullable=True)

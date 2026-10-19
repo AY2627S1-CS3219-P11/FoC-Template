@@ -11,8 +11,8 @@ from auth.models import (
     CurrentUserResponse,
     ManagedUserRole,
     ManagedUserResponse,
+    MessageType,
     UserRecord,
-    UserCreated,
     UserRole,
     UserRoleResponse,
 )
@@ -69,7 +69,7 @@ async def create_user(session: AsyncSession,
     await session.refresh(user)
     session.add(UserCreatedOutbox(
         user_id=user.user_id,
-        event="UserCreated",
+        event=MessageType.USER_CREATED,
         created_at=user.created_at,
         published_at=None,
     ))
@@ -88,15 +88,16 @@ async def enqueue_user_created_events(session: AsyncSession) -> None:
             pending = [
                 {
                     "user_id": user.user_id,
-                    "event": "UserCreated",
+                    "event": MessageType.USER_CREATED,
                     "created_at": user.created_at,
                     "published_at": None,
                 }
                 for user in batch
             ]
             await session.execute(
-                insert(UserCreatedOutbox).values(pending).on_conflict_do_nothing(
+                insert(UserCreatedOutbox).values(pending).on_conflict_do_update(
                     index_elements=[UserCreatedOutbox.user_id],
+                    set_={"published_at": None},
                 )
             )
     finally:
