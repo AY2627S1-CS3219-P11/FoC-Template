@@ -310,9 +310,14 @@ async def expire_orders(session: AsyncSession) -> list[UUID]:
         update(ErrandRequest)
         .where(ErrandRequest.status == Status.OPEN,
                ErrandRequest.expires_at <= func.clock_timestamp())
-        .values(status=Status.EXPIRED, credit_status=CreditStatus.PENDING,
-                updated_at=func.clock_timestamp())
-        .returning(ErrandRequest.id))
+        .values(
+            status=Status.EXPIRED,
+            credit_status=CreditStatus.PENDING,
+            status_reason="No courier accepted the order within the time limit.",
+            updated_at=func.clock_timestamp()
+        )
+        .returning(ErrandRequest.id)
+    )
 
     expired_ids = list(result.scalars())
 
