@@ -28,21 +28,26 @@ server {
     }
 
     location /user-api/ {
+        # Demo flags are optional; absent flags leave normal routing unchanged.
+        if (-f /var/run/gateway-demo/user.disabled) { return 503; }
         rewrite ^/user-api/(.*)$ /$1 break;
         proxy_pass $user_upstream;
     }
 
     location /supplier-api/ {
+        if (-f /var/run/gateway-demo/supplier.disabled) { return 503; }
         rewrite ^/supplier-api/(.*)$ /$1 break;
         proxy_pass $supplier_upstream;
     }
 
     location /order-api/ {
+        if (-f /var/run/gateway-demo/order.disabled) { return 503; }
         rewrite ^/order-api/(.*)$ /$1 break;
         proxy_pass $order_upstream;
     }
 
     location /credit-api/ {
+        if (-f /var/run/gateway-demo/credit.disabled) { return 503; }
         rewrite ^/credit-api/(.*)$ /$1 break;
         proxy_pass $credit_upstream;
     }
