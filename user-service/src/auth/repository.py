@@ -11,8 +11,8 @@ from auth.models import (
     CurrentUserResponse,
     ManagedUserRole,
     ManagedUserResponse,
+    MessageType,
     UserRecord,
-    UserCreated,
     UserRole,
     UserRoleResponse,
 )
@@ -67,9 +67,11 @@ async def create_user(session: AsyncSession,
 
     await session.flush()
     await session.refresh(user)
-    event = UserCreated(user_id=user.user_id, created_at=user.created_at)
     session.add(UserCreatedOutbox(
-        user_id=user.user_id, payload=event.model_dump_json(),
+        user_id=user.user_id,
+        event=MessageType.USER_CREATED,
+        created_at=user.created_at,
+        published_at=None,
     ))
 
     return UserRecord(id=str(user.user_id), username=user.username,
@@ -86,15 +88,16 @@ async def enqueue_user_created_events(session: AsyncSession) -> None:
             pending = [
                 {
                     "user_id": user.user_id,
-                    "payload": UserCreated(
-                        user_id=user.user_id, created_at=user.created_at,
-                    ).model_dump_json(),
+                    "event": MessageType.USER_CREATED,
+                    "created_at": user.created_at,
+                    "published_at": None,
                 }
                 for user in batch
             ]
             await session.execute(
-                insert(UserCreatedOutbox).values(pending).on_conflict_do_nothing(
+                insert(UserCreatedOutbox).values(pending).on_conflict_do_update(
                     index_elements=[UserCreatedOutbox.user_id],
+                    set_={"published_at": None},
                 )
             )
     finally:
@@ -235,3 +238,14 @@ async def update_user_profile(session: AsyncSession, user_id: UUID,
     await session.refresh(user)
 
     return CurrentUserResponse(username=user.username, email=user.user_email)
+
+
+async def find_pending_user_event(session: AsyncSession) -> UserCreatedOutbox | None:
+    statement = (
+        select(UserCreatedOutbox)
+        .where(UserCreatedOutbox.published_at.is_(None))
+        .order_by(UserCreatedOutbox.created_at)
+        .limit(1)
+        .with_for_update(skip_locked=True)
+    )
+    return await session.scalar(statement)

@@ -8,7 +8,6 @@ from pydantic import (
     ConfigDict,
     EmailStr,
     Field,
-    Json,
     SecretStr,
     field_validator,
     model_validator,
@@ -99,8 +98,10 @@ class UserCreated(BaseModel):
 class UserCreatedOutboxResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
+    event: Literal[MessageType.USER_CREATED]
     user_id: UUID
-    payload: Json[UserCreated]
+    created_at: datetime.datetime
+    published_at: datetime.datetime | None = None
 
 
 class CreditAccountsSyncRequested(BaseModel):
