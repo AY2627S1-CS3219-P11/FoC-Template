@@ -257,6 +257,33 @@ async def get_suppliers(
         raise HTTPException(status_code=500, detail=str(error)) from error
 
 
+@app.get("/suppliers/{id}")
+async def get_supplier(
+        id: UUID,
+        session: Annotated[AsyncSession, Depends(get_session)],
+) -> SupplierResponse:
+    try:
+        supplier = await session.scalar(
+            select(Supplier).where(Supplier.id == id, Supplier.is_active)
+        )
+
+        if not supplier:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Supplier not found",
+            )
+
+        return SupplierResponse.parse(supplier)
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Could not retrieve supplier",
+        ) from error
+
+
+
 class AuthenticatedUser(BaseModel):
     user_id: UUID
     role: str

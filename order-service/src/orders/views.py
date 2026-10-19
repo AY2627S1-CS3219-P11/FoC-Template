@@ -126,12 +126,17 @@ async def deliver_order_endpoint(order_id: UUID, user: AuthenticatedUser, sessio
 
 # order creation
 @router.post("", response_model=OrderResponse, status_code=status.HTTP_202_ACCEPTED)
-async def create_order_endpoint(payload: CreateOrderRequest, user: AuthenticatedUser, session: Session, 
-                                 client: Annotated[httpx.AsyncClient, Depends(get_internal_gateway_client)],
-                                 idempotency_key: Annotated[str, Header(min_length=1, max_length=128)],):
+async def create_order_endpoint(
+        payload: CreateOrderRequest,
+        user: AuthenticatedUser,
+        session: Session,
+        client: Annotated[httpx.AsyncClient, Depends(get_internal_gateway_client)],
+        idempotency_key: Annotated[str, Header(min_length=1, max_length=128)],
+):
     if not idempotency_key.strip():
         raise HTTPException(status_code=422, detail="Idempotency-Key must not be blank")
     items = [item.model_dump(mode="json") for item in payload.items]
+
     try:
         existing = await lookup_creation(
             session, user.user_id, idempotency_key, payload.supplier_id,
@@ -139,50 +144,39 @@ async def create_order_endpoint(payload: CreateOrderRequest, user: Authenticated
         )
     except CreationConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+
     if existing is not None:
         return existing
 
     try:
-        response = await client.get("/supplier-api/suppliers")
+        response = await client.get(f"/supplier-api/suppliers/{payload.supplier_id}")
     except httpx.RequestError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Supplier service is temporarily unavailable.",
         ) from None
 
-    if not response.is_success:
+    if response.status_code == status.HTTP_404_NOT_FOUND:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Active supplier not found.",
+        )
+    elif not response.is_success:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Supplier service is temporarily unavailable.",
         )
+
     try:
-        suppliers = response.json()
+        active_supplier = response.json()
+        if not isinstance(active_supplier, dict) or "id" not in active_supplier:
+            raise ValueError("Malformed supplier response")
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Supplier service returned an invalid response.",
         ) from None
-    if not isinstance(suppliers, list) or any(
-        not isinstance(supplier, Mapping) or "id" not in supplier
-        for supplier in suppliers
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Supplier service returned an invalid response.",
-        )
-    active_supplier = next(
-        (
-            supplier
-            for supplier in suppliers
-            if str(supplier["id"]) == str(payload.supplier_id)
-        ),
-        None,
-    )
-    if active_supplier is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Active supplier not found.",
-        )
+
     try:
         supplier_snapshot = SupplierSnapshot.model_validate(active_supplier)
     except (TypeError, ValueError):
