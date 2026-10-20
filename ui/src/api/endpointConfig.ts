@@ -43,6 +43,10 @@ export const endpointConfig = {
   },
   order: {
     orders: {
+      disputed: { service: 'order', url: '/orders/admin/disputed', verb: 'GET' },
+      resolve: { service: 'order', url: '/orders/admin/disputed/:id/resolve', verb: 'PATCH', fieldMap: { id: 'path' } },
+      review: { service: 'order', url: '/orders/admin/disputed/:id/review', verb: 'GET', fieldMap: { id: 'path' } },
+      repair: { service: 'order', url: '/orders/admin/disputed/:id/repair', verb: 'POST', fieldMap: { id: 'path' } },
       open: { service: 'order', url: '/orders/open', verb: 'GET' },
       requested: { service: 'order', url: '/orders/me/requested', verb: 'GET' },
       assigned: { service: 'order', url: '/orders/me/assigned', verb: 'GET' },

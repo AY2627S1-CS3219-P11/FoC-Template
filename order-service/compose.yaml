@@ -8,6 +8,8 @@ services:
     env_file:
       - .env
     environment:
+      # Shared open/progress/settlement deadline, in seconds (15 minutes by default).
+      TIMEOUT_DURATION: ${TIMEOUT_DURATION:-900}
       INTERNAL_GATEWAY_URL: ${INTERNAL_GATEWAY_URL:-http://internal-gateway}
     ports:
       - "127.0.0.1:3003:3002"

@@ -39,6 +39,7 @@
 .disputed .status { background: #ffe5cf; color: #79370e; }
 .disputeReason { background: #fff5ea; border-left: 3px solid #b55c27; border-radius: 4px; padding: 14px; margin-top: 18px; color: #713c1c; font-size: 14px; line-height: 1.6; }
 .disputeReason p { white-space: pre-wrap; margin: 8px 0 0; }
+.resolvedDispute { background: #eef3ed; border-left-color: #53715c; color: #34513d; }
 .cardTop { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .status { background: #edf2e8; border-radius: 20px; padding: 6px 10px; font-size: 11px; font-weight: 700; }
 .cardTop strong { font-size: 23px; color: #31553c; }

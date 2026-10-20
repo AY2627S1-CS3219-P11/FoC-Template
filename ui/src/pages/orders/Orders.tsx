@@ -3,12 +3,14 @@ import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useUser } from '../../components/user/UserContext'
 import { useToast } from '../../components/toast/useToast'
 import type { Supplier } from '../suppliers/models'
-import { filterPersonalOrders, type OrderFilter, type OrderSort, canDispute, isUnaccepted, matchesOpenFilters, remainingSeconds, statusLabels, type Order, type OrderAction, type CreditBalance, type OrderItem } from './models'
+import { settlementLabel, filterPersonalOrders, hasOpenDispute, orderDeadline, type OrderFilter, type OrderSort, isUnaccepted, matchesOpenFilters, remainingSeconds, statusLabels, type Order, type OrderAction, type CreditBalance, type OrderItem } from './models'
 import { Modal } from '../../components/modal/Modal'
+import { OrderReviews } from './DisputeDetails'
 import styles from './Orders.module.css'
 import { orderNotice, type OrderNotice } from './notifications'
 import { isRetryableSubmissionError, submitWithRetry } from './submission'
 import type { CreateOrderRequest } from './models'
+import { canApplyOrderPoll, orderPollingGeneration } from '../../api/orderDemo'
 
 type View = 'open' | 'requested' | 'assigned'
 type Resource = View | 'credits' | 'suppliers'
@@ -60,7 +62,7 @@ const Orders = () => {
     if (additions.length) setNotices((current) => [...current, ...additions])
   }, [session.user_id])
   const [statusFilter, setStatusFilter] = useState<OrderFilter>('all')
-  const [sort, setSort] = useState<OrderSort>('attention')
+  const [sort, setSort] = useState<OrderSort>('newest')
   const [location, setLocation] = useState('')
   const [minCredits, setMinCredits] = useState('')
   const [maxCredits, setMaxCredits] = useState('')
@@ -80,33 +82,40 @@ const Orders = () => {
     return () => window.removeEventListener('beforeunload', warn)
   }, [creationAttempt])
 
-  const refresh = useCallback(async () => {
-    if (refreshing.current) return
+  const refresh = useCallback(async (background = false) => {
+    const generation = orderPollingGeneration()
+    const canApply = () => !background || canApplyOrderPoll(generation)
+    if (!canApply() || refreshing.current) return
     refreshing.current = true
     try {
       const loaders: Record<Resource, () => Promise<void>> = {
         open: async () => {
           const open = await api.order.open()
+          if (!canApply()) return
           setOrders((current) => ({ ...current, open }))
         },
         requested: async () => {
           const requested = await api.order.requested()
+          if (!canApply()) return
           observeOrders(requested)
           setOrders((current) => ({ ...current, requested }))
         },
         assigned: async () => {
           const assigned = await api.order.assigned()
+          if (!canApply()) return
           observeOrders(assigned)
           setOrders((current) => ({ ...current, assigned }))
         },
-        credits: async () => { setBalance(await api.credit.current()) },
-        suppliers: async () => { setSuppliers(await api.supplier.list()) },
+        credits: async () => { const value = await api.credit.current(); if (canApply()) setBalance(value) },
+        suppliers: async () => { const value = await api.supplier.list(); if (canApply()) setSuppliers(value) },
       }
       await Promise.all((Object.entries(loaders) as [Resource, () => Promise<void>][]).map(async ([key, load]) => {
         try {
           await load()
+          if (!canApply()) return
           setResources((current) => ({ ...current, [key]: { loaded: true, error: false } }))
         } catch {
+          if (!canApply()) return
           setResources((current) => ({ ...current, [key]: { ...current[key], error: true } }))
         }
       }))
@@ -116,8 +125,8 @@ const Orders = () => {
   }, [api, observeOrders])
 
   useEffect(() => {
-    const initialLoad = window.setTimeout(() => void refresh(), 0)
-    const poll = window.setInterval(() => void refresh(), 5000)
+    const initialLoad = window.setTimeout(() => void refresh(true), 0)
+    const poll = window.setInterval(() => void refresh(true), 5000)
     const clock = window.setInterval(() => setNow(Date.now()), 1000)
     return () => { window.clearTimeout(initialLoad); window.clearInterval(poll); window.clearInterval(clock) }
   }, [refresh])
@@ -208,7 +217,7 @@ const Orders = () => {
       const result = await api.order.dispute(reportOrder.id, reason.trim())
       setReportOrder(null)
       setReason('')
-      showSuccessToast(result.status_reason === reason.trim() ? 'Order disputed.' : 'This order was already disputed. The original reason has been kept.')
+      showSuccessToast(result.disputes.some((case_) => case_.kind === 'fulfilment' && !case_.closed_at && case_.reason === reason.trim()) ? 'Order disputed.' : 'This order was already disputed. The original reason has been kept.')
     } catch (error) { setReportError(errorMessage(error)) }
     finally { await refresh(); mutationLock.current = false; setBusy(null) }
   }
@@ -279,7 +288,7 @@ const Orders = () => {
     {reportOrder && <Modal id="report-problem" labelledBy="report-title" onClose={() => setReportOrder(null)} busy={busy !== null}><section className={styles.formPanel}>
       <h2 id="report-title">Report a problem</h2>
       <p>{reportOrder.supplier_snapshot?.name ?? 'Order'} · {reportOrder.items.map((item) => `${item.quantity} × ${item.name}`).join(', ')}</p>
-      <p>Disputing permanently freezes order progress. It does not automatically refund or pay credits. Your reason will be visible to both participants and cannot be edited or added to by reporting again.</p>
+      <p>Reporting pauses order progress for administrator review. It does not automatically refund or pay credits. An administrator can decide to refund the requester or pay the courier. Your reason will be visible to both participants and cannot be edited by reporting again.</p>
       <form onSubmit={(event) => void dispute(event)}>
         <label htmlFor="dispute-reason">What went wrong?</label>
         <textarea id="dispute-reason" required rows={5} maxLength={2000} value={reason} disabled={busy !== null} aria-describedby="reason-help" aria-invalid={!!reportError} onChange={(event) => setReason(event.target.value)} />
@@ -292,15 +301,15 @@ const Orders = () => {
       <h2 id="cancel-title">Cancel this request?</h2><p>Reserved credits will be returned. This cannot be undone.</p>
       <div className={styles.cardActions}><button disabled={busy !== null} onClick={() => setCancelOrder(null)}>Keep request</button><button disabled={busy !== null || !!loadError} onClick={() => void update(cancelOrder, 'cancel')}>{busy ? 'Cancelling…' : 'Cancel request'}</button></div>
     </section></Modal>}
-    <nav className={styles.views} aria-label="Order lists">{([['open', 'Open requests'], ['requested', 'My requests'], ['assigned', 'My deliveries']] as const).map(([key, label]) => <button key={key} aria-pressed={view === key} onClick={() => setView(key)}>{label}{key !== 'open' && orders[key].some((order) => order.status === 'disputed') ? ` · ${orders[key].filter((order) => order.status === 'disputed').length} disputed` : ''}</button>)}</nav>
+    <nav className={styles.views} aria-label="Order lists">{([['open', 'Open requests'], ['requested', 'My requests'], ['assigned', 'My deliveries']] as const).map(([key, label]) => <button key={key} aria-pressed={view === key} onClick={() => setView(key)}>{label}{key !== 'open' && orders[key].some(hasOpenDispute) ? ` · ${orders[key].filter(hasOpenDispute).length} under review` : ''}</button>)}</nav>
     {view === 'open' && <section className={styles.filters} aria-label="Filter open requests">
       <label>Pickup location<input value={location} onChange={(event) => setLocation(event.target.value)} placeholder="Supplier or building" /></label>
       <label>Minimum credits<input type="number" min="1" step="1" value={minCredits} onChange={(event) => setMinCredits(event.target.value)} placeholder="Any" /></label>
       <label>Maximum credits<input type="number" min="1" step="1" value={maxCredits} onChange={(event) => setMaxCredits(event.target.value)} placeholder="Any" /></label>
     </section>}
     {view !== 'open' && <section className={styles.filters} aria-label="Filter and sort your orders">
-      <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as OrderFilter)}><option value="all">All orders</option><option value="disputed">Disputed</option><option value="active">Active</option><option value="finished">Finished</option></select></label>
-      <label>Sort by<select value={sort} onChange={(event) => setSort(event.target.value as OrderSort)}><option value="attention">Needs attention first</option><option value="newest">Newest created</option><option value="oldest">Oldest created</option></select></label>
+      <label>Status<select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as OrderFilter)}><option value="all">All orders</option><option value="disputed">Needs review</option><option value="active">Active</option><option value="finished">Finished</option></select></label>
+      <label>Sort by<select value={sort} onChange={(event) => setSort(event.target.value as OrderSort)}><option value="newest">Newest created</option><option value="oldest">Oldest created</option></select></label>
     </section>}
     <div className={styles.listHeading}><h2>{view === 'open' ? 'Find a favour along your way' : view === 'requested' ? 'Your requests' : 'Your deliveries'}</h2><span>Updates every 5 seconds</span></div>
     {loadError && <div role="status" className={styles.notice}><strong>{view === 'open' ? 'Open requests' : view === 'requested' ? 'Your requests' : 'Your deliveries'} are temporarily unavailable</strong><p>{resources[view].loaded ? 'Showing the last loaded orders. They may be out of date; actions will return when we reconnect.' : 'We couldn’t load this list. Please try again shortly.'} Other sections are still available.</p><button onClick={() => void refresh()}>Try again</button></div>}
@@ -309,30 +318,30 @@ const Orders = () => {
       const unaccepted = isUnaccepted(order)
       const expired = unaccepted && seconds === 0
       const own = order.requester_id === session.user_id
-      const assigned = order.courier_id === session.user_id
-      const dueAt = ['accepted', 'picked_up', 'delivered'].includes(order.status) ? order.progress_due_at : order.status === 'received' && order.credit_status === 'pending' ? order.settlement_due_at : null
-      const dueLabel = order.status === 'accepted' ? 'Pickup' : order.status === 'picked_up' ? 'Delivery' : order.status === 'delivered' ? 'Receipt confirmation' : 'Credit settlement'
-      return <article className={`${styles.card} ${order.status === 'disputed' ? styles.disputed : ''}`} key={order.id}>
+      const deadline = orderDeadline(order)
+      return <article className={`${styles.card} ${hasOpenDispute(order) ? styles.disputed : ''}`} key={order.id}>
         <div className={styles.cardTop}><span className={styles.status}>{expired ? 'Expired' : statusLabels[order.status]}</span><strong>{order.credits} <small>credits</small></strong></div>
         <h3>{order.supplier_snapshot?.name ?? 'Supplier'}</h3>
         <p className={styles.pickup}>{order.supplier_snapshot ? `${order.supplier_snapshot.building} · Floor ${order.supplier_snapshot.floor}` : 'Pickup location unavailable'}</p>
         <ul>{order.items.map((item, index) => <li key={index}>{item.quantity} × {item.name}</li>)}</ul>
         {order.pickup_notes && <p className={styles.notes}>{order.pickup_notes}</p>}
         {unaccepted && !expired && <p className={styles.countdown} aria-label="Time remaining before expiry">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')} remaining{order.status === 'init' ? ' · Reserving credits…' : ''}</p>}
-        {dueAt && <p className={styles.countdown}>{dueLabel} due <time dateTime={dueAt}>{new Date(dueAt).toLocaleString()}</time>{Date.parse(dueAt) <= now ? ' · Overdue; awaiting status update' : ''}</p>}
-        {order.status === 'disputed' && <section className={styles.disputeReason} aria-label="Dispute details"><strong>Dispute reason</strong><p>{order.status_reason || 'No reason available.'}</p><p>Order progress is frozen. Reporting does not automatically refund or pay credits. Financial processing may still update.</p></section>}
-        {order.status_reason && order.status !== 'disputed' && <p className={styles.notes}>{order.status_reason}</p>}
+        {deadline && <p className={styles.countdown}>{deadline.label} due <time dateTime={deadline.at}>{new Date(deadline.at).toLocaleString()}</time>{Date.parse(deadline.at) <= now ? deadline.settlement ? ' · Settlement delayed; automatic recovery continues' : ' · Overdue; awaiting status update' : ''}</p>}
+        <OrderReviews disputes={order.disputes ?? []} className={styles.disputeReason} resolvedClassName={styles.resolvedDispute} />
+        {order.status_reason && <p className={styles.notes}>{order.status_reason}</p>}
+        <p className={styles.notes} role="status">{settlementLabel(order)}{order.credit_reason && ` · Reason: ${order.credit_reason}`}</p>
         {order.status === 'rejected' && <p>Credits could not be reserved. Check your balance before creating another request.</p>}
         <div className={styles.cardActions}>
-          {order.status === 'open' && !expired && !own && <button className={styles.primary} disabled={busy !== null || !!loadError} aria-haspopup="dialog" onClick={() => setAcceptOrder(order)}>{busy === order.id ? 'Updating…' : 'Accept request'}</button>}
-          {order.status === 'open' && !expired && own && <button disabled={busy !== null || !!loadError} onClick={() => setCancelOrder(order)}>Cancel request</button>}
+          {order.available_actions.includes('accept') && <button className={styles.primary} disabled={busy !== null || !!loadError} aria-haspopup="dialog" onClick={() => setAcceptOrder(order)}>{busy === order.id ? 'Updating…' : 'Accept request'}</button>}
+          {order.available_actions.includes('cancel') && <button disabled={busy !== null || !!loadError} onClick={() => setCancelOrder(order)}>Cancel request</button>}
           {own && view === 'open' && <small>Your request · You cannot accept it</small>}
-          {assigned && order.status === 'accepted' && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'pickup')}>Mark picked up</button>}
-          {assigned && order.status === 'picked_up' && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'deliver')}>Mark delivered</button>}
-          {own && order.status === 'delivered' && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'receive')}>Confirm received</button>}
+          {order.available_actions.includes('pickup') && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'pickup')}>Mark picked up</button>}
+          {order.available_actions.includes('deliver') && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'deliver')}>Mark delivered</button>}
+          {order.available_actions.includes('receive') && <small>Confirming receipt acknowledges fulfilment and starts payment. Report any delivery problem before confirming.</small>}
+          {order.available_actions.includes('receive') && <button className={styles.primary} disabled={busy !== null || !!loadError} onClick={() => void update(order, 'receive')}>Confirm received</button>}
           {own && ['accepted', 'picked_up', 'delivered'].includes(order.status) && <small>Assigned to a courier · Cannot be cancelled</small>}
-          {(own || assigned) && canDispute(order) && <button disabled={busy !== null || !!loadError} aria-haspopup="dialog" onClick={() => { setReason(''); setReportError(''); setReportOrder(order) }}>Report a problem</button>}
-          {order.status === 'received' && <small>Receipt confirmed · {order.credit_status === 'rejected' ? 'Credit transfer rejected; you may report a problem' : 'Credit transfer processing'}</small>}
+          {order.available_actions.includes('dispute') && <button disabled={busy !== null || !!loadError} aria-haspopup="dialog" onClick={() => { setReason(''); setReportError(''); setReportOrder(order) }}>Report a problem</button>}
+          {order.status === 'received' && <small>{order.disputes?.some((case_) => case_.closed_at && case_.resolution === 'pay') ? 'An administrator approved courier payment. ' : ''}{order.credit_status === 'rejected' ? 'Payment was rejected and needs financial review. No new request is needed.' : 'Payment is processing. If delayed, the same payment is recovered automatically; do not submit another request.'}</small>}
           {order.status === 'completed' && <small>Complete · Credits transferred</small>}
         </div>
       </article>

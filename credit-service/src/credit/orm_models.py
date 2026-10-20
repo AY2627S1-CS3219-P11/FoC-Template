@@ -11,6 +11,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PostgresUUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -39,6 +40,12 @@ class CreditOutbox(Base):
         ),
     )
 
+
+class CreditOrderGuard(Base):
+    """Serialize all money-moving commands for an order."""
+
+    __tablename__ = "credit_order_guards"
+    order_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), primary_key=True)
 
 class Credit(Base):
     __tablename__ = "credits"
@@ -127,13 +134,19 @@ class CreditAuditLog(Base):
         DateTime(timezone=False), nullable=False,
     )
 
+    actor_id: Mapped[UUID | None] = mapped_column(PostgresUUID(as_uuid=True), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    request_id: Mapped[UUID | None] = mapped_column(PostgresUUID(as_uuid=True), nullable=True)
+    before: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     __table_args__ = (
         CheckConstraint(
             "action IN (" + ", ".join(f"'{action}'" for action in CreditAuditAction) + ")",
             name="credit_audit_logs_valid_action",
         ),
         CheckConstraint(
-            "amount > 0", name="credit_audit_logs_amount_positive",
+            "amount >= 0", name="credit_audit_logs_amount_positive",
         ),
         CheckConstraint(
             f"(action = '{CreditAuditAction.TRANSFER}' AND recipient_user_id IS NOT NULL "

@@ -17,6 +17,8 @@ class CreditAuditAction(StrEnum):
     RESERVE = "RESERVE"
     RELEASE = "RELEASE"
     TRANSFER = "TRANSFER"
+    ADMIN_CHARGE_RESERVED = "ADMIN_CHARGE_RESERVED"
+    ADMIN_COVER_RESERVED = "ADMIN_COVER_RESERVED"
 
 
 class CreditReservationStatus(StrEnum):
@@ -34,6 +36,11 @@ class CreditRejectionReason(StrEnum):
     INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
     RESERVATION_CONFLICT = "RESERVATION_CONFLICT"
     INVALID_OPERATION = "INVALID_OPERATION"
+    BALANCE_INCONSISTENT = "BALANCE_INCONSISTENT"
+    ACCOUNT_NOT_FOUND = "ACCOUNT_NOT_FOUND"
+    RESERVATION_NOT_FOUND = "RESERVATION_NOT_FOUND"
+    ALREADY_TRANSFERRED = "ALREADY_TRANSFERRED"
+    ALREADY_RELEASED = "ALREADY_RELEASED"
 
 
 class MessageType(StrEnum):
@@ -83,6 +90,11 @@ class CreditAuditLogResponse(BaseModel):
     action: CreditAuditAction
     amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
     created_at: datetime.datetime
+    actor_id: UUID | None = None
+    reason: str | None = None
+    request_id: UUID | None = None
+    before: dict[str, int] | None = None
+    after: dict[str, int] | None = None
 
 
 class CreditReservationResult(BaseModel):
@@ -118,9 +130,20 @@ class ReserveCreditCommand(BaseModel):
         return CreditOperation.RESERVE
 
 
+class ReservationRepair(BaseModel):
+    """Trusted Order command metadata; never accepted from a public Credit endpoint."""
+
+    action: Literal['charge_reserved', 'cover_reserved']
+    actor_id: UUID
+    dispute_id: UUID
+    rejected_request_id: UUID
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class ReleaseCreditCommand(BaseModel):
     request_id: UUID
     order_id: UUID
+    repair: ReservationRepair | None = None
 
     @property
     def operation(self) -> CreditOperation:
@@ -131,6 +154,7 @@ class TransferCreditCommand(BaseModel):
     request_id: UUID
     order_id: UUID
     courier_id: UUID
+    repair: ReservationRepair | None = None
 
     @property
     def operation(self) -> CreditOperation:

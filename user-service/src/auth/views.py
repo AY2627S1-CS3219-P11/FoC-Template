@@ -6,7 +6,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from common.db import get_session
 from common.config_manager import settings
-from auth.dependencies import AdminManagerUser, AuthenticatedUser, bearer_scheme
+from auth.dependencies import AdminManagerUser, AdminUser, AuthenticatedUser, bearer_scheme
 from auth.exceptions import (
     AuthenticationUnavailableError,
     InvalidCredentialsError,
@@ -16,6 +16,7 @@ from auth.exceptions import (
 from auth.service import (
     authenticate_user,
     get_current_user_profile,
+    get_participant_profiles,
     get_users_for_access_management,
     register_user,
     invalidate_authentication_session,
@@ -27,6 +28,8 @@ from auth.models import (
     CurrentUserResponse,
     ManagedUserRole,
     ManagedUserResponse,
+    ParticipantLookupRequest,
+    ParticipantResponse,
     SignInRequest,
     SignUpRequest,
     UpdateCurrentUserRequest,
@@ -90,6 +93,16 @@ async def get_current_user(
         return await get_current_user_profile(user.user_id, session)
     except InvalidTokenError:
         return unauthorized_response()
+
+
+@router.post("/users/lookup")
+async def lookup_participants(
+    request: ParticipantLookupRequest,
+    _admin: AdminUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[ParticipantResponse]:
+    """Resolve known participant IDs; missing users are omitted from the result."""
+    return await get_participant_profiles(request.user_ids, session)
 
 
 @router.get("/users")

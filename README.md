@@ -24,44 +24,26 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 
 ## Repository Structure
 
-This repository follows a **one-service-per-folder** structure: each
-microservice (`user-service/`, `supplier-service/`, `order-service/`,
-`credit-service/`) lives in its own top-level folder.
-
-```text
-.
-├── user-service/
-├── supplier-service/
-├── order-service/
-├── credit-service/
-├── internal-gateway/
-├── <n2h-service>/
-└── README.md
-```
-
-- Any **nice-to-have (N2H)** feature that warrants its own service should
-  be added as an **additional folder** at the same level, following the
-  same per-service structure.
-- Files for agentic coding tools (e.g. agent configs, prompts, skills)
-  may be added as needed, but must still **respect the
-  one-service-per-folder skeleton** for core implementation.
+Each service has its own top-level folder: `user-service/`, `supplier-service/`,
+`order-service/` and `credit-service/`. The frontend lives in `ui/` and HTTP routing
+in `internal-gateway/`. See each folder's README for development instructions.
 
 ## Internal HTTP routing
 
-All HTTP calls between services use an explicitly configured
-`INTERNAL_GATEWAY_URL`. Compose supplies `http://internal-gateway` for its known
-Docker topology; applications do not assume a localhost destination. The [nginx internal
-gateway](internal-gateway/README.md) routes `/user-api/` to user-service,
-`/supplier-api/` to supplier-service, and `/credit-api/` to credit-service,
-stripping only that service prefix.
-Services keep their existing authentication and authorization responsibilities.
-The UI also proxies API requests through this gateway.
+Run `docker compose up --build` and open <http://127.0.0.1:4173>.
 
-Run `docker compose up --build` from the repository root and open the UI at
-<http://127.0.0.1:4173>. The gateway is not published on the host; containers
-reach it on the shared Docker network. Only gateway configuration contains
-backend HTTP addresses. RabbitMQ and databases remain separate from HTTP
-routing. Deployment to separate machines requires its own networking configuration
-and is outside this local Compose setup.
+The UI and services route HTTP through `INTERNAL_GATEWAY_URL` (Compose:
+`http://internal-gateway`). The [internal gateway](internal-gateway/README.md)
+strips `/user-api/`, `/supplier-api/`, `/order-api/` or `/credit-api/` and forwards
+to the matching service. Services enforce authentication and authorization.
+The gateway is container-network-only; RabbitMQ and databases use separate connections.
+
+## Deployment
+
+Deployment is a full cutover: reset the application databases and RabbitMQ queues
+before starting the new stack. Confirm the exact targets before deleting data,
+including on hosted/shared infrastructure. Services create tables from current
+ORM metadata; no in-place schema migration or legacy-message compatibility is
+supported. Startup does not automatically delete databases or queues.
 
 ---

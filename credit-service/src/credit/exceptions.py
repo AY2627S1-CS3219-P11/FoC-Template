@@ -14,6 +14,14 @@ class CreditReservationConflictError(ValueError):
     pass
 
 
+class CreditsAlreadyTransferredError(CreditReservationConflictError):
+    pass
+
+
+class CreditsAlreadyReleasedError(CreditReservationConflictError):
+    pass
+
+
 class CreditConsistencyError(ValueError):
     pass
 

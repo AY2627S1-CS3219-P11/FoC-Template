@@ -21,11 +21,25 @@ const originalFetch = globalThis.fetch
 globalThis.window = {}
 const { makeCampusErrandsAPIRequest: request } = await import(join(directory, 'api.mjs'))
 const { CampusErrandsAPIError } = await import(join(directory, 'models.mjs'))
+const { orderPollingGeneration, canApplyOrderPoll } = await import(join(directory, 'orderDemo.mjs'))
 const create = { service: 'order', url: '/orders', verb: 'POST' }
 after(async () => {
   globalThis.window = originalWindow
   globalThis.fetch = originalFetch
   await rm(directory, { recursive: true, force: true })
+})
+
+test('polling controls invalidate in-flight polls and leave actions available', async () => {
+  const before = orderPollingGeneration()
+  assert.equal(canApplyOrderPoll(before), true)
+  window.orderDemo.stopPollingOrder()
+  assert.equal(canApplyOrderPoll(before), false)
+  assert.equal(canApplyOrderPoll(orderPollingGeneration()), false)
+  globalThis.fetch = async () => Response.json({ detail: 'Order cannot be cancelled' }, { status: 409 })
+  await assert.rejects(request({}, { service: 'order', url: '/orders/123/cancel', verb: 'PATCH' }), { status: 409 })
+  window.orderDemo.resumePollingOrder()
+  assert.equal(canApplyOrderPoll(before), false, 'a pre-pause response stays invalid after resuming')
+  assert.equal(canApplyOrderPoll(orderPollingGeneration()), true)
 })
 
 test('demo discards one real successful receipt, preserving idempotent retry request', async () => {

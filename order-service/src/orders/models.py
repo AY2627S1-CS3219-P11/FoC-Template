@@ -1,10 +1,15 @@
 from enum import StrEnum
-from typing import ClassVar, Self
+from typing import ClassVar, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, Field, model_validator
 
 MAX_CREDITS = 9_223_372_036_854_775_807
+
+
+type ResolutionAction = Literal["refund", "pay"]
+type RepairAction = Literal["charge_reserved", "cover_reserved"]
+type CaseAction = ResolutionAction | RepairAction
 
 
 class CreditOperation(StrEnum):
@@ -22,6 +27,11 @@ class CreditRejectionReason(StrEnum):
     INSUFFICIENT_CREDITS = "INSUFFICIENT_CREDITS"
     RESERVATION_CONFLICT = "RESERVATION_CONFLICT"
     INVALID_OPERATION = "INVALID_OPERATION"
+    BALANCE_INCONSISTENT = "BALANCE_INCONSISTENT"
+    ACCOUNT_NOT_FOUND = "ACCOUNT_NOT_FOUND"
+    RESERVATION_NOT_FOUND = "RESERVATION_NOT_FOUND"
+    ALREADY_TRANSFERRED = "ALREADY_TRANSFERRED"
+    ALREADY_RELEASED = "ALREADY_RELEASED"
 
 
 class ExchangeName(StrEnum):
@@ -45,11 +55,22 @@ class ReserveCreditCommand(BaseModel):
     amount: int = Field(ge=1, le=MAX_CREDITS, strict=True)
 
 
+class ReservationRepair(BaseModel):
+    """Order-authorized funding attached to a single settlement attempt."""
+
+    action: RepairAction
+    actor_id: UUID
+    dispute_id: UUID
+    rejected_request_id: UUID
+    reason: str = Field(min_length=1, max_length=2000)
+
+
 class ReleaseCreditCommand(BaseModel):
     routing_key: ClassVar[RoutingKey] = RoutingKey.CREDIT_RELEASE
 
     request_id: UUID
     order_id: UUID
+    repair: ReservationRepair | None = None
 
 
 class TransferCreditCommand(BaseModel):
@@ -58,6 +79,7 @@ class TransferCreditCommand(BaseModel):
     request_id: UUID
     order_id: UUID
     courier_id: UUID
+    repair: ReservationRepair | None = None
 
 
 type CreditCommand = ReserveCreditCommand | ReleaseCreditCommand | TransferCreditCommand
