@@ -228,3 +228,40 @@ The page sits below Profile, fetches your logs, supports mobile layouts, shows �
 Build, lint and all 32 existing checks pass. Browser checks used simulated API responses. Nothing committed.
 
 ---
+06-10-2026 21:38 | Usage scenario: Use ChatGPT to generate boiler template for credit service
+
+Prompt:
+In credit-service folder, can you follow the format in user-service e.g. main.py, db.py and views.py those. I want you to create the db engine using sql alchemy. Whatever that is in .env and .env example must be similar too. Do use rabbitMQ. You can get the references from supplier-service + .env files from it too
+
+Key responses:
+Credit Service is currently empty. I recommend User Service’s split structure over Supplier Service’s single-file layout:
+
+- `src/main.py` for startup and shutdown.
+- `src/common/config_manager.py` for `.env` settings.
+- `src/common/db.py` for the async SQLAlchemy engine and sessions.
+- `src/credit/views.py` for routes, starting with `/health`.
+- RabbitMQ connection/channel setup following Supplier Service.
+- Dependencies and Docker setup matching the sibling services.
+
+The ignored `.env` will contain your supplied database URL using `postgresql+psycopg://`, matching User Service and [SQLAlchemy’s async driver format](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#module-sqlalchemy.dialects.postgresql.psycopg). `.env.example` will use placeholders and the same key-per-line format.
+
+---
+07-10-2026 16:52 | Usage scenario: Use ChatGPT to implement the user registration and credit allocation flow
+
+Prompt:
+Implement the signup-to-credit-account workflow using RabbitMQ, following the existing User Service and Supplier Service conventions. In both User Service and Credit Service, declare a durable DIRECT exchange named user_events during lifespan initialization and store the returned exchange in app.state.user_exchange, alongside the connection and channel, so it can be reused. After a user is successfully committed to the database, User Service should publish a persistent UserCreated event with routing key user.created, containing the actual stored user ID and creation timestamp. In Credit Service, declare a durable, non-exclusive queue named credit_user_created, bind it to that exchange with binding key user.created, and start consuming during startup. For each event, insert a credit account using the same user UUID, available_credits = 100, reserved_credits = 0, and the event’s creation timestamp for both initial created_at and updated_at, do not generate a separate timestamp. Make processing idempotent duplicate events must leave an existing account and its balance unchanged. Acknowledge the message only after the database operation commits successfully, and handle publication or processing failures so registration events are not silently lost. Follow the existing SQLAlchemy model and startup table-creation approach without adding a separate .sql file.
+
+---
+07-10-2026 17:53 | Usage scenario: Use ChatGPT to implement credit audit logs for backend
+
+Prompt: 
+Create the SQLAlchemy schema for a credit_audit_logs table in Credit Service, following the existing conventions in credit-service/src/credit/orm_models.py and reusing its declarative Base. Add a CreditAuditLog model with these fields: log_id as a UUID primary key generated with uuid4; user_id as a non-null UUID identifying the credit owner; recipient_user_id as a nullable UUID identifying the courier receiving a transfer; order_id as a nullable UUID; action as non-null text; amount as a non-null BigInteger; and created_at as a non-null DateTime(timezone=False) with no Python or database default, supplied by the application as the operation’s UTC timestamp without timezone information. Add named check constraints allowing only INITIAL_ALLOCATION, RESERVE, RELEASE, and TRANSFER; requiring amount > 0; requiring a recipient different from user_id for transfers and no recipient for other actions; and requiring no order ID for initial allocation but an order ID for all other actions. Do not add cross-database foreign keys, reason, operation_id, updated_at, compensation actions, or a separate .sql file. Ensure the model is included in the existing startup table-creation flow.
+
+Dont include anything else please
+
+Key responses:
+Added `CreditAuditLog` in [orm_models.py](/Users/weihungloh/FoC-Template/credit-service/src/credit/orm_models.py) with exactly the requested fields and named constraints. The shared `Base` includes it in startup table creation automatically.
+
+Verified PostgreSQL DDL and constraint behavior locally. Only this file changed; nothing committed.
+
+---
