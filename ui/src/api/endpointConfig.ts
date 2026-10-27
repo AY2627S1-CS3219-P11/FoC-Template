@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-14
+Scope: Refactored the endpoint configuration and API hook into the requested service groups
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import type { EndpointConfigEntry } from './models'
 
 export const endpointConfig = {

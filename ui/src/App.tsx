@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-13
+Scope: Generated the initial React, Vite, and TypeScript scaffold
+Author review: I reviewed correctness and edited the generated scaffold to fit the project
+*/
+
 import { createBrowserRouter, RouterProvider, type RouteObject } from 'react-router-dom'
 import ProtectedLayout from './components/protectedLayout/ProtectedLayout'
 import ProtectedRoutes from './components/protectedRoutes/ProtectedRoutes'

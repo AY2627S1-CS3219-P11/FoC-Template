@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-14
+Scope: Refactored the endpoint configuration and API hook into the requested service groups
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useMemo } from 'react'
 import type { Order, CreateOrderRequest, CreditBalance, OrderAction } from '../pages/orders/models'
 import type { ResolutionAction, RepairAction, OrderReview } from './orderOperations'
