@@ -1,3 +1,12 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: Implemented the requested credit-account model and event-supplied creation timestamps
+# Author review: I reviewed correctness and edited the changes to fit the project
+#
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: Implemented the requested CreditAuditLog SQLAlchemy model and its initial named constraints
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from datetime import datetime
 from uuid import UUID, uuid4
 

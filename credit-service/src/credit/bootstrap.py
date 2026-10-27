@@ -1,3 +1,12 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-06
+# Scope: Initial database and RabbitMQ lifecycle setup was later moved here from main.py
+# Author review: I reviewed correctness and edited the changes to fit the project
+#
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: UserCreated consumer lifecycle setup was later moved here from main.py
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager, suppress

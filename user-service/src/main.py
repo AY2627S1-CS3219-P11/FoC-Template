@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: Integrated startup resources and the UserCreated event publisher with the FastAPI lifespan
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
