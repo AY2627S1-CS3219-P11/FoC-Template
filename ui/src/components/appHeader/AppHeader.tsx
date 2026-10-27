@@ -1,3 +1,18 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Implemented the initial account drawer, profile link, and requester/courier toggle
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Added the admin-manager-only portal link below Profile
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-10-27
+Scope: Added the credit audit-log menu link below Profile
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'

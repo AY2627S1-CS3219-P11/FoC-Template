@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+# Scope: Included User Service in the root Compose configuration
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 include:
   - path: ./user-service/compose.yaml
   - path: ./supplier-service/compose.yaml

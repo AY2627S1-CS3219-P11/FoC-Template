@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Implemented Admin/User tabs, search, and grant/revoke controls
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { CampusErrandsAPIError } from '../../api/models'

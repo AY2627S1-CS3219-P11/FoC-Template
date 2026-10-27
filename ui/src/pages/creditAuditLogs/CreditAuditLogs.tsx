@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-10-27
+Scope: Implemented audit-log fetching, automatic refresh, pagination, and empty/error states
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useEffect, useState } from 'react'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useUser } from '../../components/user/UserContext'

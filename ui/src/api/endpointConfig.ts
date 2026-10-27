@@ -3,6 +3,18 @@ AI Assistance Disclosure:
 Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-14
 Scope: Refactored the endpoint configuration and API hook into the requested service groups
 Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Added current-profile endpoint bindings
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Added admin-management endpoint bindings and role/query parameters
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-10-27
+Scope: Added the credit audit-log endpoint binding
+Author review: I reviewed correctness and edited the changes to fit the project
 */
 
 import type { EndpointConfigEntry } from './models'

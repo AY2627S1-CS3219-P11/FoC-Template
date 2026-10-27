@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+# Scope: Passed the selected role and search query to managed-user retrieval
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone

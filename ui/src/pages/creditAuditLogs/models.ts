@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-10-27
+Scope: Added credit audit-log types, descriptions, and timestamp formatting
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 export type CreditAuditAction = 'INITIAL_ALLOCATION' | 'RESERVE' | 'RELEASE' | 'TRANSFER'
   | 'ADMIN_CHARGE_RESERVED' | 'ADMIN_COVER_RESERVED'
 

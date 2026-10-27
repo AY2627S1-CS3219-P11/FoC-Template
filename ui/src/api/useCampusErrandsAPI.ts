@@ -3,6 +3,18 @@ AI Assistance Disclosure:
 Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-14
 Scope: Refactored the endpoint configuration and API hook into the requested service groups
 Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Added API calls for loading and updating the current profile
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Added API calls for listing managed users and granting or revoking admin access
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-10-27
+Scope: Added the authenticated credit audit-log API call
+Author review: I reviewed correctness and edited the changes to fit the project
 */
 
 import { useMemo } from 'react'

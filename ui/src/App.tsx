@@ -3,6 +3,18 @@ AI Assistance Disclosure:
 Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-13
 Scope: Generated the initial React, Vite, and TypeScript scaffold
 Author review: I reviewed correctness and edited the generated scaffold to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Added the profile route and shared account layout
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Added the admin manager portal page route
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-10-27
+Scope: Added the credit audit-log page route
+Author review: I reviewed correctness and edited the changes to fit the project
 */
 
 import { createBrowserRouter, RouterProvider, type RouteObject } from 'react-router-dom'

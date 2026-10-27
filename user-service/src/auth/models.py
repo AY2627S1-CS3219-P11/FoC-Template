@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+# Scope: Updated role types used by admin-management endpoints
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 import datetime
 from enum import StrEnum
 from typing import Literal, Self

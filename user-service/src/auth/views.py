@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+# Scope: Added role and query parameters to the managed-user listing endpoint
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Security
 from fastapi.security import HTTPAuthorizationCredentials
 from jwt import InvalidTokenError
