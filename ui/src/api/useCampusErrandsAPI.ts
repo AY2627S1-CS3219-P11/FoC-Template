@@ -23,6 +23,7 @@ import type {
   UpdateManagedUserRoleRequest,
 } from '../pages/adminManagerPortal/models'
 import type { UpdateCurrentUserProfileRequest } from '../pages/profile/models'
+import type { CreditAuditLog } from '../pages/creditAuditLogs/models'
 
 export const useCampusErrandsAPI = () => useMemo(() => ({
   request: makeCampusErrandsAPIRequest,
@@ -95,5 +96,6 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
   },
   credit: {
     current: () => makeAuthenticatedCampusErrandsAPIRequest<null, CreditBalance>(null, endpointConfig.credit.credits.current),
+    auditLogs: () => makeAuthenticatedCampusErrandsAPIRequest<null, CreditAuditLog[]>(null, endpointConfig.credit.credits.auditLogs),
   },
 }), [])

@@ -101,6 +101,10 @@ const AppHeader = () => {
               <span>Profile</span>
               <span aria-hidden="true">→</span>
             </Link>
+            <Link to={routes.creditAuditLogs} onClick={() => setIsOpen(false)} aria-current={location.pathname === routes.creditAuditLogs ? 'page' : undefined}>
+              <span>Credit audit logs</span>
+              <span aria-hidden="true">→</span>
+            </Link>
             {(session.role === 'admin' || session.role === 'admin_manager') && <Link className={styles.adminLink} to={routes.orderOperations} onClick={() => setIsOpen(false)}><span>Order operations</span><span aria-hidden="true">→</span></Link>}
             {session.role === 'admin_manager' && (
               <Link className={styles.adminLink} to={routes.adminManagerPortal} onClick={() => setIsOpen(false)}>

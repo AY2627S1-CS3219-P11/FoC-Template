@@ -4,6 +4,7 @@ import ProtectedRoutes from './components/protectedRoutes/ProtectedRoutes'
 import AdminManagerPortal from './pages/adminManagerPortal/AdminManagerPortal'
 import SignIn from './pages/authentication/signIn/SignIn'
 import SignUp from './pages/authentication/signUp/SignUp'
+import CreditAuditLogs from './pages/creditAuditLogs/CreditAuditLogs'
 import Home from './pages/home/Home'
 import Orders from './pages/orders/Orders'
 import OrderOperations from './pages/orderOperations/OrderOperations'
@@ -24,6 +25,7 @@ const appRoutes: RouteObject[] = [
           { path: routes.orders, element: <Orders /> },
           { path: routes.orderOperations, element: <OrderOperations /> },
           { path: routes.profile, element: <Profile /> },
+          { path: routes.creditAuditLogs, element: <CreditAuditLogs /> },
           { path: routes.adminManagerPortal, element: <AdminManagerPortal /> },
           { path: routes.suppliers, element: <Suppliers /> },
         ],

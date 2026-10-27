@@ -58,6 +58,7 @@ export const endpointConfig = {
   credit: {
     credits: {
       current: { service: 'credit', url: '/credits/current', verb: 'GET' },
+      auditLogs: { service: 'credit', url: '/credits/credit-audit-logs', verb: 'GET' },
     },
   },
 } as const satisfies Record<string, Record<string, Record<string, EndpointConfigEntry>>>

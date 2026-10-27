@@ -3,6 +3,7 @@ export const routes = {
   signUp: '/sign-up',
   home: '/home',
   profile: '/profile',
+  creditAuditLogs: '/credit-audit-logs',
   adminManagerPortal: '/admin-manager-portal',
   suppliers: '/suppliers',
   orders: '/orders',
