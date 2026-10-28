@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Added admin-management request and response types
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 export type ManagedUserRole = 'admin' | 'user'
 
 export type ManagedUser = {

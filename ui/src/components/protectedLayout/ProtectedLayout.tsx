@@ -1,3 +1,14 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Integrated current-profile loading and shared account state
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Passed shared authentication session state into the user provider
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useEffect, useState } from 'react'
 import { Outlet, useOutletContext } from 'react-router-dom'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'

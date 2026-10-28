@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: Added UserCreated payload validation for wallet initialization
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 import datetime
 from enum import StrEnum
 from typing import Literal, Self

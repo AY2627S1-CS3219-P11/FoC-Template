@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Styled the initial prototype-inspired account drawer
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 .header {
   width: min(1120px, calc(100% - 48px));
   margin: 0 auto;
