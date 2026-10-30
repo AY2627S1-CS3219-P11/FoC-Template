@@ -1,3 +1,14 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Adapted the supplier page to the shared account header
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Updated the supplier page to use shared authentication session state
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { CampusErrandsAPIError } from '../../api/models'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'

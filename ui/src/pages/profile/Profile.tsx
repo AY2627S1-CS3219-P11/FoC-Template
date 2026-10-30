@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Implemented profile editing, changed-field submission, and save/error feedback
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useState, type FormEvent } from 'react'
 import { CampusErrandsAPIError } from '../../api/models'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'

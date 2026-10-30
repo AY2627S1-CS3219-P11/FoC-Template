@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: The wallet-creation transaction was later moved here from repository.py
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from datetime import datetime, timezone
 from uuid import UUID
 

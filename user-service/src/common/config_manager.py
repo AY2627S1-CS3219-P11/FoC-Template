@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: Added the RabbitMQ setting used by registration-event publication
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from pathlib import Path
 from typing import Literal
 

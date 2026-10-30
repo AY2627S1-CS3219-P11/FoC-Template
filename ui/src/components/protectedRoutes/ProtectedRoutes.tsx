@@ -1,3 +1,14 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Updated protected navigation for the shared profile experience
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Passed the authenticated session to protected pages
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useEffect, useState } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { CampusErrandsAPIError } from '../../api/models'

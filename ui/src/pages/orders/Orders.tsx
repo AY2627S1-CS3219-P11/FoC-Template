@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
+import { Link } from 'react-router-dom'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
 import { useUser } from '../../components/user/UserContext'
 import { useToast } from '../../components/toast/useToast'
@@ -343,6 +344,9 @@ const Orders = () => {
           {order.available_actions.includes('dispute') && <button disabled={busy !== null || !!loadError} aria-haspopup="dialog" onClick={() => { setReason(''); setReportError(''); setReportOrder(order) }}>Report a problem</button>}
           {order.status === 'received' && <small>{order.disputes?.some((case_) => case_.closed_at && case_.resolution === 'pay') ? 'An administrator approved courier payment. ' : ''}{order.credit_status === 'rejected' ? 'Payment was rejected and needs financial review. No new request is needed.' : 'Payment is processing. If delayed, the same payment is recovered automatically; do not submit another request.'}</small>}
           {order.status === 'completed' && <small>Complete · Credits transferred</small>}
+          <Link to={`/order-audit-logs/${order.id}/history`} className={styles.historyLink}>
+            View timeline
+          </Link>
         </div>
       </article>
     })}</div>}

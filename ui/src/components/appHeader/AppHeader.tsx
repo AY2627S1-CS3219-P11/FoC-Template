@@ -1,3 +1,18 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Implemented the initial account drawer, profile link, and requester/courier toggle
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
+Scope: Added the admin-manager-only portal link below Profile
+Author review: I reviewed correctness and edited the changes to fit the project
+
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-10-27
+Scope: Added the credit audit-log menu link below Profile
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { useEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useCampusErrandsAPI } from '../../api/useCampusErrandsAPI'
@@ -99,6 +114,14 @@ const AppHeader = () => {
           <nav className={styles.accountLinks} aria-label="Account navigation">
             <Link to={routes.profile} onClick={() => setIsOpen(false)}>
               <span>Profile</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+            <Link to={routes.orderAuditLogs} onClick={() => setIsOpen(false)} aria-current={location.pathname === routes.orderAuditLogs ? 'page' : undefined}>
+              <span>Order Audit Logs</span>
+              <span aria-hidden="true">→</span>
+            </Link>
+            <Link to={routes.creditAuditLogs} onClick={() => setIsOpen(false)} aria-current={location.pathname === routes.creditAuditLogs ? 'page' : undefined}>
+              <span>Credit Audit Logs</span>
               <span aria-hidden="true">→</span>
             </Link>
             {(session.role === 'admin' || session.role === 'admin_manager') && <Link className={styles.adminLink} to={routes.orderOperations} onClick={() => setIsOpen(false)}><span>Order operations</span><span aria-hidden="true">→</span></Link>}

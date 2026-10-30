@@ -1,3 +1,10 @@
+/*
+AI Assistance Disclosure:
+Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-19
+Scope: Adapted the home page to the shared account header
+Author review: I reviewed correctness and edited the changes to fit the project
+*/
+
 import { Link } from 'react-router-dom'
 import { routes } from '../../routes'
 import styles from './Home.module.css'

@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-07
+# Scope: Implemented persistent UserCreated publication, broker confirmation, and retry handling
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 import asyncio
 import logging
 from datetime import datetime, timezone

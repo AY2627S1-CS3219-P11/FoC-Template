@@ -1,3 +1,8 @@
+# AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol Max), date: 2026-10-06
+# Scope: Generated the initial async SQLAlchemy engine and session helpers
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from collections.abc import AsyncIterator
 from functools import lru_cache
 
