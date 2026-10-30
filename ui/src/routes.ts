@@ -18,6 +18,7 @@ export const routes = {
   signUp: '/sign-up',
   home: '/home',
   profile: '/profile',
+  orderAuditLogs: '/order-audit-logs/:orderId/history',
   creditAuditLogs: '/credit-audit-logs',
   adminManagerPortal: '/admin-manager-portal',
   suppliers: '/suppliers',
