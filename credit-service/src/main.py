@@ -5,6 +5,10 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from common.config_manager import settings
+from common.logging_config import (
+    RequestLoggingMiddleware,
+    configure_logging,
+)
 from credit.bootstrap import initialize_credit_service
 from credit.views import router as credit_router
 
@@ -18,7 +22,9 @@ async def lifespan(app: FastAPI):
         yield
 
 
+configure_logging("credit-service")
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.add_middleware(RequestLoggingMiddleware)
 
 
 @app.get("/health")
@@ -35,9 +41,13 @@ async def invalid_request_handler(
 
 @app.exception_handler(Exception)
 async def unexpected_error_handler(
-    _request: Request, _exception: Exception,
+    request: Request, _exception: Exception,
 ) -> JSONResponse:
-    return JSONResponse(status_code=500, content={"message": "Internal server error."})
+    return JSONResponse(
+        status_code=500,
+        content={"message": "Internal server error."},
+        headers={"X-Request-ID": request.state.http_request_id},
+    )
 
 
 app.include_router(credit_router)

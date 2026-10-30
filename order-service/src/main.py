@@ -10,6 +10,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from common.config_manager import settings
 from common.db import get_engine
 from common.gateway import get_internal_gateway_url
+from common.logging_config import (
+    RequestLoggingMiddleware,
+    configure_logging,
+    propagate_request_id,
+    unexpected_error_handler,
+)
 from orders.messaging import initialize_order_messaging
 from orders.orm_models import Base
 from orders.views import router as order_router
@@ -27,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             httpx.AsyncClient(
                 base_url=gateway_url,
                 timeout=5.0,
+                event_hooks={"request": [propagate_request_id]},
                 # Credentials are per-request headers, never shared session cookies.
                 cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=[])),
             )
@@ -49,7 +56,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
                     await expiry_task
 
 
+configure_logging("order-service")
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_exception_handler(Exception, unexpected_error_handler)
 app.include_router(order_router)
 
 

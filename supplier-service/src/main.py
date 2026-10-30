@@ -1,9 +1,9 @@
 import asyncio
 import csv
 import datetime
-import os
-import aio_pika
 import json
+import logging
+import os
 from collections.abc import AsyncIterator, Iterable, Iterator
 from contextlib import asynccontextmanager
 from enum import Enum
@@ -13,10 +13,18 @@ from pathlib import Path
 from typing import Annotated
 from uuid import UUID, uuid4
 
+import aio_pika
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+)
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -25,6 +33,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from common.logging_config import (
+    RequestLoggingMiddleware,
+    configure_logging,
+    propagate_request_id,
+    unexpected_error_handler,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class Base(DeclarativeBase):
@@ -72,6 +89,7 @@ def get_engine() -> AsyncEngine:
     return create_async_engine(
         database_url,
         pool_pre_ping=True,
+        hide_parameters=True,
         connect_args={"connect_timeout": 5},
     )
 
@@ -134,7 +152,7 @@ def batches(records: Iterable[Supplier], size: int = 1_000) -> Iterator[list[Sup
 
 async def seed_database_from_csv(engine: AsyncEngine, csv_path: Path) -> None:
     if not csv_path.is_file():
-        print(f"Seed CSV not found at {csv_path}, skipping seeding")
+        logger.warning("Seed CSV not found; skipping seeding")
         return
 
     async with engine.begin() as connection:
@@ -144,7 +162,7 @@ async def seed_database_from_csv(engine: AsyncEngine, csv_path: Path) -> None:
             )
         )
         if table_exists:
-            print("Suppliers table already exists, skipping seeding")
+            logger.info("Suppliers table already exists; skipping seeding")
             return
 
         await connection.run_sync(Base.metadata.create_all)
@@ -154,7 +172,7 @@ async def seed_database_from_csv(engine: AsyncEngine, csv_path: Path) -> None:
         for batch in batches(supplier_records(csv_path)):
             session.add_all(batch)
         await session.commit()
-    print("Successfully seeded database from CSV file")
+    logger.info("Successfully seeded database from CSV file")
 
 
 @asynccontextmanager
@@ -176,7 +194,6 @@ async def lifespan(app: FastAPI):
     for attempt in range(10):
         try:
             rmq_connection = await aio_pika.connect_robust(rabbitmq_url)
-            print("Successfully connected to RabbitMQ")
             break
         except (ConnectionRefusedError, OSError):
             await asyncio.sleep(2)
@@ -191,7 +208,7 @@ async def lifespan(app: FastAPI):
 
     app.state.rmq_connection = rmq_connection
     app.state.rmq_channel = rmq_channel
-    print("Successfully connected to RabbitMQ")
+    logger.info("Successfully connected to RabbitMQ")
 
     yield
     await rmq_channel.close()
@@ -199,7 +216,10 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+configure_logging("supplier-service")
 app = FastAPI(title="Supplier Service", lifespan=lifespan)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_exception_handler(Exception, unexpected_error_handler)
 
 
 @app.get("/health")
@@ -218,8 +238,9 @@ async def publish_supplier_event(channel: aio_pika.Channel, event_type: str, sup
             delivery_mode=aio_pika.DeliveryMode.PERSISTENT
         )
         await exchange.publish(message, routing_key="")
-    except Exception as error:
-        print(f"Failed to publish RabbitMQ event '{event_type}': {error}")
+        logger.info(event_type, extra={"supplier_id": supplier_id})
+    except Exception:
+        logger.exception("Supplier event publication failed", extra={"supplier_id": supplier_id})
 
 
 class SupplierResponse(BaseModel):
@@ -254,7 +275,8 @@ async def get_suppliers(
         )
         return [SupplierResponse.parse(supplier) for supplier in suppliers.all()]
     except Exception as error:
-        raise HTTPException(status_code=500, detail=str(error)) from error
+        logger.exception("Could not retrieve suppliers")
+        raise HTTPException(status_code=500, detail="Could not retrieve suppliers") from error
 
 
 @app.get("/suppliers/{id}")
@@ -277,6 +299,7 @@ async def get_supplier(
     except HTTPException:
         raise
     except Exception as error:
+        logger.exception("Could not retrieve supplier", extra={"supplier_id": id})
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Could not retrieve supplier",
@@ -305,7 +328,9 @@ def get_internal_gateway_url() -> str:
 
 async def get_internal_gateway_client() -> AsyncIterator[httpx.AsyncClient]:
     base_url = get_internal_gateway_url()
-    async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
+    async with httpx.AsyncClient(
+        base_url=base_url, timeout=5.0, event_hooks={"request": [propagate_request_id]},
+    ) as client:
         yield client
 
 
@@ -402,6 +427,7 @@ async def create_supplier(
         await publish_supplier_event(app.state.rmq_channel, "supplier.created", supplier.id)
         return SupplierResponse.parse(supplier)
     except Exception as error:
+        logger.exception("Could not create supplier")
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -450,6 +476,7 @@ async def update_supplier(
     except HTTPException:
         raise
     except Exception as error:
+        logger.exception("Could not update supplier", extra={"supplier_id": id})
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -480,6 +507,7 @@ async def delete_supplier(
     except HTTPException:
         raise
     except Exception as error:
+        logger.exception("Could not delete supplier", extra={"supplier_id": id})
         await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

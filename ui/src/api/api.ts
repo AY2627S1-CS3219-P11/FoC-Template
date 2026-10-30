@@ -127,11 +127,12 @@ const sendRequest = async <TResponse>({ init, url }: RequestDetails, service: AP
         throw new CampusErrandsAPIError(unavailable, 0);
     }
     let data: TResponse | null;
+    const requestId = response.headers?.get('x-request-id') ?? undefined;
     try {
         data = await parseResponse<TResponse>(response);
     } catch {
         // Preserve HTTP status (especially 401) even if the error body is invalid.
-        if (response.ok) throw new CampusErrandsAPIError(unavailable, 502);
+        if (response.ok) throw new CampusErrandsAPIError(unavailable, 502, undefined, requestId);
         data = null;
     }
     const contentType = response.headers?.get('content-type') ?? '';
@@ -142,7 +143,7 @@ const sendRequest = async <TResponse>({ init, url }: RequestDetails, service: AP
         typeof data === 'string' &&
         /<!doctype html|<html[\s>]/i.test(data)
     ) {
-        throw new CampusErrandsAPIError(unavailable, 502);
+        throw new CampusErrandsAPIError(unavailable, 502, undefined, requestId);
     }
 
     if (!response.ok) {
@@ -151,7 +152,7 @@ const sendRequest = async <TResponse>({ init, url }: RequestDetails, service: AP
             : response.status === 429 ? 'Too many attempts. Please wait a moment and try again.'
             : 'We couldn’t complete that request. Please try again.';
         const message = response.status >= 500 ? unavailable : getErrorMessage(data, fallback);
-        throw new CampusErrandsAPIError(message, response.status, data);
+        throw new CampusErrandsAPIError(message, response.status, data, requestId);
     }
 
     return data as TResponse;

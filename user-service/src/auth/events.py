@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import aio_pika
@@ -15,6 +16,8 @@ from auth.models import (
 )
 from auth.repository import enqueue_user_created_events, find_pending_user_event
 
+logger = logging.getLogger(__name__)
+
 
 async def consume_credit_accounts_sync_requested(
     message: AbstractIncomingMessage,
@@ -23,7 +26,8 @@ async def consume_credit_accounts_sync_requested(
     try:
         CreditAccountsSyncRequested.model_validate_json(message.body)
     except ValidationError:
-        print("Invalid credit account reconciliation request; message rejected without requeue.")
+        logger.warning("Invalid credit account reconciliation request; rejecting without requeue",
+                       extra={"message_id": message.message_id})
         await message.reject(requeue=False)
         return
 
@@ -31,31 +35,31 @@ async def consume_credit_accounts_sync_requested(
         async with session_factory.begin() as session:
             await enqueue_user_created_events(session)
         await message.ack()
-        print("Credit account reconciliation queued through the UserCreated outbox.")
-    except Exception as error:
-        print(
-            f"Credit account reconciliation failed ({type(error).__name__}); "
-            "request will be requeued for retry."
-        )
+        logger.info("Credit account reconciliation queued through UserCreated outbox")
+    except Exception:
+        logger.exception("Credit account reconciliation failed; requeuing",
+                         extra={"message_id": message.message_id})
         await asyncio.sleep(2)
         try:
             await message.nack(requeue=True)
         except Exception:
-            print("Could not requeue reconciliation; unacknowledged delivery awaits broker recovery.")
+            logger.exception("Could not requeue reconciliation; awaiting broker recovery")
 
 
 async def publish_pending_user_events(
     session_factory: async_sessionmaker[AsyncSession],
     exchange: AbstractExchange,
 ) -> None:
-    try:
-        for _ in range(100):
+    for _ in range(100):
+        context = {}
+        try:
             async with session_factory.begin() as session:
                 pending = await find_pending_user_event(session)
                 if pending is None:
                     return
 
                 outbox_response = UserCreatedOutboxResponse.model_validate(pending)
+                context = {"user_id": outbox_response.user_id}
                 payload = UserCreated(
                     event=outbox_response.event,
                     user_id=outbox_response.user_id,
@@ -77,11 +81,10 @@ async def publish_pending_user_events(
                     raise RuntimeError("RabbitMQ did not confirm UserCreated delivery")
 
                 pending.published_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    except Exception as error:
-        print(
-            f"UserCreated publication failed ({type(error).__name__}); "
-            "pending event retained for retry."
-        )
+            logger.info("user.created_event_published", extra=context)
+        except Exception:
+            logger.exception("UserCreated publication failed; retained for retry", extra=context)
+            return
 
 
 async def run_user_event_publisher(

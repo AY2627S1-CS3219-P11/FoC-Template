@@ -1,4 +1,5 @@
 """Correlate durable Credit outcomes and open financial cases without losing milestones."""
+import logging
 from uuid import uuid4
 
 from sqlalchemy import func, select
@@ -25,7 +26,10 @@ from orders.orm_models import (
     ErrandRequest,
     Status,
 )
+
 from orders.repository import add_credit_command
+
+logger = logging.getLogger(__name__)
 
 
 async def _apply(session: AsyncSession, result: CreditResult, routing_key: RoutingKey) -> None:
@@ -68,7 +72,13 @@ async def _apply(session: AsyncSession, result: CreditResult, routing_key: Routi
             order.status = Status.EXPIRED
         if order.status == Status.INIT:
             order.status = Status.OPEN
-            order.expires_at = now + open_window()
+            window = open_window()
+            order.expires_at = now + window
+            logger.info(
+                "order.deadline_selected: acceptance window %s seconds; expires_at=%s",
+                window.total_seconds(), order.expires_at.isoformat(),
+                extra={"order_id": order.id, "command_id": result.request_id},
+            )
         elif order.status == Status.EXPIRED:
             release = await session.scalar(select(CreditCommandOutbox.id).where(
                 CreditCommandOutbox.order_id == order.id,

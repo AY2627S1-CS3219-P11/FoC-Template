@@ -14,7 +14,7 @@ from common.config_manager import settings
 from orders.models import RoutingKey
 from orders.repository import find_pending_credit_command
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger(__name__)
 
 
 def replay_delay_seconds(attempt: int, base_seconds: int) -> float:
@@ -87,10 +87,11 @@ async def publish_next_outbox_message(session_factory: async_sessionmaker[AsyncS
             )
             outbox_message.last_error = f"{type(error).__name__}: {error}"[:2000]
             logger.warning(
-                "Could not publish order outbox message %s; retrying in %s seconds",
-                outbox_message.id,
-                delay_seconds,
+                "Could not publish order outbox message; retrying",
                 exc_info=True,
+                extra={"command_id": outbox_message.id, "order_id": outbox_message.order_id,
+                       "attempt": outbox_message.attempts, "retry_in_seconds": delay_seconds,
+                       "routing_key": outbox_message.routing_key},
             )
         else:
             # Replaying an unresolved request asks Credit for its saved
@@ -103,8 +104,8 @@ async def publish_next_outbox_message(session_factory: async_sessionmaker[AsyncS
             )
             outbox_message.last_error = None
             logger.info(
-                "%s credit command %s for order %s (%s)",
-                "Replayed unresolved" if replay else "Published",
-                outbox_message.id, outbox_message.order_id, outbox_message.routing_key,
+                "order.command_replayed" if replay else "order.command_published",
+                extra={"command_id": outbox_message.id, "order_id": outbox_message.order_id,
+                       "attempt": outbox_message.attempts, "routing_key": outbox_message.routing_key},
             )
     return True

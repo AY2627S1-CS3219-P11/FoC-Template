@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from uuid import uuid4
 
 import aio_pika
@@ -18,6 +19,8 @@ from credit.models import (
     UserCreated,
 )
 from credit.service import create_credit_account, process_credit_command
+
+logger = logging.getLogger(__name__)
 
 CREDIT_COMMAND_MODELS = {
     RoutingKey.CREDIT_RESERVE: ReserveCreditCommand,
@@ -46,7 +49,7 @@ async def request_credit_account_sync(exchange: AbstractExchange) -> None:
             raise RuntimeError("RabbitMQ did not confirm credit account reconciliation")
     except Exception:
         raise RuntimeError("Could not request credit account reconciliation") from None
-    print("Credit account reconciliation requested; missing accounts will be initialized asynchronously.")
+    logger.info("Credit account reconciliation requested")
 
 
 # Create the credit account and initial allocation once
@@ -57,7 +60,8 @@ async def consume_user_created(
     try:
         event = UserCreated.model_validate_json(message.body)
     except ValidationError:
-        print("Invalid UserCreated event; message rejected without requeue.")
+        logger.warning("Invalid UserCreated event; rejecting without requeue",
+                       extra={"message_id": message.message_id})
         await message.reject(requeue=False)
         return
 
@@ -65,16 +69,15 @@ async def consume_user_created(
         async with session_factory() as session:
             await create_credit_account(session, event)
         await message.ack()
-    except Exception as error:
-        print(
-            f"UserCreated processing failed ({type(error).__name__}); "
-            "message will be requeued for retry."
-        )
+        logger.info("UserCreated processed", extra={"user_id": event.user_id})
+    except Exception:
+        logger.exception("UserCreated processing failed; requeuing",
+                         extra={"user_id": event.user_id, "message_id": message.message_id})
         await asyncio.sleep(2)
         try:
             await message.nack(requeue=True)
         except Exception:
-            print("Could not requeue UserCreated; unacknowledged delivery awaits broker recovery.")
+            logger.exception("Could not requeue UserCreated; awaiting broker recovery")
 
 
 # Commit the outcome before acknowledging the command
@@ -86,26 +89,29 @@ async def consume_credit_command(
     try:
         credit_command = CREDIT_COMMAND_MODELS[message.routing_key].model_validate_json(message.body)
     except ValidationError:
-        print("Invalid credit command; message rejected without requeue.")
+        logger.warning("Invalid credit command; rejecting without requeue",
+                       extra={"message_id": message.message_id, "routing_key": message.routing_key})
         await message.reject(requeue=False)
         return
 
+    context = {
+        "command_id": credit_command.request_id,
+        "order_id": credit_command.order_id,
+        "operation": credit_command.operation,
+        "message_id": message.message_id,
+        "routing_key": message.routing_key,
+        "redelivered": message.redelivered,
+    }
     try:
         async with session_factory() as session:
             outcome = await process_credit_command(session, credit_command)
         await message.ack()
-        print(f"Credit {outcome.operation} {outcome.request_id}: {outcome.outcome}.")
+        logger.info("credit.command_processed", extra={**context, "outcome": outcome.outcome})
     except CreditRequestConflictError:
-        print(
-            f"Credit request {credit_command.request_id} reused for another command; "
-            "message rejected without requeue."
-        )
+        logger.warning("Credit command ID reused; rejecting without requeue", extra=context)
         await message.reject(requeue=False)
-    except Exception as error:
-        print(
-            f"Credit {credit_command.operation} {credit_command.request_id} "
-            f"processing failed ({type(error).__name__}); command will be retried."
-        )
+    except Exception:
+        logger.exception("Credit command processing failed; retrying", extra=context)
         await _retry_credit_command(message, command_exchange)
 
 
@@ -133,10 +139,11 @@ async def _retry_credit_command(
         if not isinstance(confirmation, Basic.Ack):
             raise RuntimeError("RabbitMQ did not confirm the credit retry.")
         await message.ack()
-    except Exception as error:
-        print(f"Credit retry publication failed ({type(error).__name__}); delivery retained.")
+    except Exception:
+        logger.exception("Credit retry publication failed; delivery retained",
+                         extra={"message_id": message.message_id, "command_id": message.correlation_id})
         if not message.processed:
             try:
                 await message.nack(requeue=True)
             except Exception:
-                print("Credit command awaits broker recovery as an unacknowledged delivery.")
+                logger.exception("Credit command awaits broker recovery")

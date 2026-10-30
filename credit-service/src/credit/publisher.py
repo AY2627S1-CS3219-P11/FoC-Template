@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime, timezone
 
 import aio_pika
@@ -9,20 +10,25 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from credit.models import CreditOutboxResponse, MessageType, RoutingKey
 from credit.repository import find_pending_credit_outcome
 
+logger = logging.getLogger(__name__)
+
 
 async def publish_pending_credit_events(
     session_factory: async_sessionmaker[AsyncSession], exchange: AbstractExchange,
 ) -> None:
-    try:
-        for _ in range(100):
+    for _ in range(100):
+        context = {}
+        try:
             async with session_factory.begin() as session:
                 pending = await find_pending_credit_outcome(session)
                 if pending is None:
                     return
                 outbox_response = CreditOutboxResponse.model_validate(pending)
                 payload = outbox_response.payload.result
+                context = {"command_id": outbox_response.request_id, "order_id": payload.order_id}
                 if payload.request_id != outbox_response.request_id:
                     raise ValueError("The stored outcome has a different request ID.")
+                logger.info("credit.result_publishing", extra=context)
                 # RabbitMQ routes this result to Order's queue
                 confirmation = await exchange.publish(
                     aio_pika.Message(
@@ -41,11 +47,10 @@ async def publish_pending_credit_events(
                     raise RuntimeError("RabbitMQ did not confirm the credit outcome.")
                 # Order processes the result after this broker confirmation
                 pending.published_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    except Exception as error:
-        print(
-            f"Credit outcome publication failed ({type(error).__name__}); "
-            "pending outcome retained for retry."
-        )
+            logger.info("credit.result_published", extra=context)
+        except Exception:
+            logger.exception("Credit outcome publication failed; retained for retry", extra=context)
+            return
 
 
 async def run_credit_event_publisher(

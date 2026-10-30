@@ -1,33 +1,37 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, Security
-from fastapi.security import HTTPAuthorizationCredentials
-from jwt import InvalidTokenError
+import logging
 from typing import Annotated
 from uuid import UUID
+
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    Security,
+)
+from fastapi.security import HTTPAuthorizationCredentials
+from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
-from common.db import get_session
-from common.config_manager import settings
-from auth.dependencies import AdminManagerUser, AdminUser, AuthenticatedUser, bearer_scheme
+
+from auth.dependencies import (
+    AdminManagerUser,
+    AdminUser,
+    AuthenticatedUser,
+    bearer_scheme,
+)
 from auth.exceptions import (
     AuthenticationUnavailableError,
     InvalidCredentialsError,
     UserAlreadyExistsError,
     UserNotFoundError,
 )
-from auth.service import (
-    authenticate_user,
-    get_current_user_profile,
-    get_participant_profiles,
-    get_users_for_access_management,
-    register_user,
-    invalidate_authentication_session,
-    update_current_user_profile,
-    update_user_role,
-)
 from auth.models import (
     AuthenticationResponse,
     CurrentUserResponse,
-    ManagedUserRole,
     ManagedUserResponse,
+    ManagedUserRole,
     ParticipantLookupRequest,
     ParticipantResponse,
     SignInRequest,
@@ -38,9 +42,21 @@ from auth.models import (
     UserRoleResponse,
 )
 from auth.responses import clear_access_token_cookie, unauthorized_response
-
+from auth.service import (
+    authenticate_user,
+    get_current_user_profile,
+    get_participant_profiles,
+    get_users_for_access_management,
+    invalidate_authentication_session,
+    register_user,
+    update_current_user_profile,
+    update_user_role,
+)
+from common.config_manager import settings
+from common.db import get_session
 
 router = APIRouter(prefix="/authentication", tags=["Authentication"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/users", status_code=201)
@@ -51,6 +67,7 @@ async def sign_up(credentials: SignUpRequest,
     except UserAlreadyExistsError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
 
+    logger.info("user.registered")
     return {"message": "Account created successfully. Please sign in to continue."}
 
 
@@ -63,10 +80,13 @@ async def sign_in(
     try:
         token = await authenticate_user(credentials, session)
     except InvalidCredentialsError:
+        logger.warning("authentication.sign_in_rejected")
         raise HTTPException(status_code=401, detail="Invalid email or password.") from None
     except AuthenticationUnavailableError:
+        logger.warning("authentication.unavailable")
         raise HTTPException(status_code=503, detail="Authentication is temporarily unavailable.") from None
 
+    logger.info("authentication.signed_in")
     response.set_cookie(
         "access_token",
         token,

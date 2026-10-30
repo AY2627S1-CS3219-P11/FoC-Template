@@ -8,6 +8,11 @@ from auth.bootstrap import initialize_user_service
 from auth.models import PASSWORD_REQUIREMENTS_MESSAGE
 from auth.views import router as authentication_router
 from common.config_manager import settings
+from common.logging_config import (
+    RequestLoggingMiddleware,
+    configure_logging,
+    unexpected_error_handler,
+)
 
 
 @asynccontextmanager
@@ -21,7 +26,10 @@ async def lifespan(app: FastAPI):
         yield
 
 
+configure_logging("user-service")
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app.add_middleware(RequestLoggingMiddleware)
+app.add_exception_handler(Exception, unexpected_error_handler)
 
 
 @app.get("/health")

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
 
 // Compile the API modules in isolation; no browser or additional test dependencies needed.
@@ -17,8 +18,8 @@ for (const [source, target] of [['src/api/api.ts', 'api'], ['src/api/models.ts',
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
   }).outputText)
 }
-const { makeCampusErrandsAPIRequest: request, makeAuthenticatedCampusErrandsAPIRequest: authenticatedRequest } = await import(join(directory, 'api.mjs'))
-const { CampusErrandsAPIError } = await import(join(directory, 'models.mjs'))
+const { makeCampusErrandsAPIRequest: request, makeAuthenticatedCampusErrandsAPIRequest: authenticatedRequest } = await import(pathToFileURL(join(directory, 'api.mjs')).href)
+const { CampusErrandsAPIError } = await import(pathToFileURL(join(directory, 'models.mjs')).href)
 const config = { service: 'user', url: '/signin', verb: 'POST' }
 const originalFetch = globalThis.fetch
 const fail = async (message, status) => assert.rejects(request(null, config), (error) =>
@@ -38,6 +39,14 @@ test('proxy HTML is replaced with a friendly service message', async () => {
 test('network errors do not leak browser diagnostics', async () => {
   globalThis.fetch = async () => { throw new TypeError('Failed to fetch') }
   await fail('Account services are temporarily unavailable. Please try again shortly.', 0)
+})
+
+test('HTTP failures retain the server request ID for log lookup', async () => {
+  globalThis.fetch = async () => Response.json({ message: 'Unavailable' }, {
+    status: 503, headers: { 'X-Request-ID': 'request-123' },
+  })
+  await assert.rejects(request(null, config), (error) =>
+    error instanceof CampusErrandsAPIError && error.status === 503 && error.requestId === 'request-123')
 })
 test('successful HTML fallback is treated as unavailable', async () => {
   globalThis.fetch = async () => new Response('<!doctype html><html>SPA</html>', { headers: { 'Content-Type': 'text/html' } })
