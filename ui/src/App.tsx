@@ -30,6 +30,7 @@ import OrderOperations from './pages/orderOperations/OrderOperations'
 import Profile from './pages/profile/Profile'
 import Suppliers from './pages/suppliers/Suppliers'
 import { routes } from './routes'
+import OrderAuditLogs from "./pages/orderAuditLogs/OrderAuditLogs.tsx";
 
 const appRoutes: RouteObject[] = [
   { path: routes.signIn, element: <SignIn /> },
@@ -45,6 +46,7 @@ const appRoutes: RouteObject[] = [
           { path: routes.orderOperations, element: <OrderOperations /> },
           { path: routes.profile, element: <Profile /> },
           { path: routes.creditAuditLogs, element: <CreditAuditLogs /> },
+          { path: routes.orderAuditLogs, element: <OrderAuditLogs /> },
           { path: routes.adminManagerPortal, element: <AdminManagerPortal /> },
           { path: routes.suppliers, element: <Suppliers /> },
         ],

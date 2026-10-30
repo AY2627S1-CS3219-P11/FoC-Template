@@ -71,3 +71,18 @@
   .itemRow { grid-template-columns: 1fr 80px; }
   .itemRow button { grid-column: 1 / -1; justify-self: start; }
 }
+.historyLink {
+  display: inline-block;
+  border: 1px solid #ced7ca;
+  border-radius: 7px;
+  padding: 10px 15px;
+  background: #fff;
+  color: #284b37;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  text-align: center;
+}
+.historyLink:hover {
+  background: #eaf0e4;
+}

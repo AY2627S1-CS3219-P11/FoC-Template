@@ -72,6 +72,7 @@ export const endpointConfig = {
       create: { service: 'order', url: '/orders', verb: 'POST' },
       dispute: { service: 'order', url: '/orders/:id/dispute', verb: 'PATCH', fieldMap: { id: 'path' } },
       update: { service: 'order', url: '/orders/:id/:action', verb: 'PATCH', fieldMap: { id: 'path', action: 'path' } },
+      auditLogs: { service: 'order', url: '/orders/:id/audit-logs', verb: 'GET', fieldMap: { id: 'path' } },
     },
   },
   credit: {
