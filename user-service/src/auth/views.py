@@ -14,15 +14,6 @@ from jwt import InvalidTokenError
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import (
-    APIRouter,
-    Depends,
-    HTTPException,
-    Query,
-    Request,
-    Response,
-    Security,
-)
 from fastapi.security import HTTPAuthorizationCredentials
 from jwt import InvalidTokenError
 from sqlalchemy.ext.asyncio import AsyncSession
