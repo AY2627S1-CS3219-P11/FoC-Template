@@ -116,10 +116,6 @@ const AppHeader = () => {
               <span>Profile</span>
               <span aria-hidden="true">→</span>
             </Link>
-            <Link to={routes.orderAuditLogs} onClick={() => setIsOpen(false)} aria-current={location.pathname === routes.orderAuditLogs ? 'page' : undefined}>
-              <span>Order Audit Logs</span>
-              <span aria-hidden="true">→</span>
-            </Link>
             <Link to={routes.creditAuditLogs} onClick={() => setIsOpen(false)} aria-current={location.pathname === routes.creditAuditLogs ? 'page' : undefined}>
               <span>Credit Audit Logs</span>
               <span aria-hidden="true">→</span>
