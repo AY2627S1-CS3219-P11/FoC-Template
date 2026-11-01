@@ -9,7 +9,7 @@ from orders.repository import (
     expire_orders,
 )
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger(__name__)
 
 
 async def expiry_worker(session_factory: async_sessionmaker[AsyncSession]) -> None:
@@ -20,10 +20,10 @@ async def expiry_worker(session_factory: async_sessionmaker[AsyncSession]) -> No
                 expired_ids = await expire_orders(session)
                 expired_ids.extend(initializing_ids)
                 disputed_ids = await dispute_overdue_orders(session)
-            if disputed_ids:
-                logger.info("Disputed %d overdue orders", len(disputed_ids))
-            if expired_ids:
-                logger.info("Expired %d orders", len(expired_ids))
+            for order_id in disputed_ids:
+                logger.info("order.disputed_overdue", extra={"order_id": order_id})
+            for order_id in expired_ids:
+                logger.info("order.expired", extra={"order_id": order_id})
         except asyncio.CancelledError:
             raise
         except Exception:

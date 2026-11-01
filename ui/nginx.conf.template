@@ -1,4 +1,12 @@
+log_format json_access escape=json
+    '{"timestamp":"$time_iso8601","service_name":"ui",'
+    '"message":"http.request_completed","http_request_id":"$request_id",'
+    '"method":"$request_method","status":$status,"duration_seconds":$request_time,'
+    '"upstream_status":"$upstream_status","upstream_seconds":"$upstream_response_time"}';
+
 server {
+    access_log /dev/stdout json_access;
+    error_log /dev/stderr warn;
     listen 80;
     server_name _;
     root /usr/share/nginx/html;
@@ -10,6 +18,10 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    # Generate at the public entry point; preserve across internal service calls.
+    proxy_set_header X-Request-ID $request_id;
+    proxy_hide_header X-Request-ID;
+    add_header X-Request-ID $request_id always;
     proxy_cookie_domain ~.* $host;
 
     # Keep the service prefixes; only the internal gateway strips them.

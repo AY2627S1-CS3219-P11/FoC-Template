@@ -4,6 +4,7 @@ import httpx
 from pydantic import AnyHttpUrl, ValidationError
 
 from common.config_manager import settings
+from common.logging_config import propagate_request_id
 
 
 def get_internal_gateway_url() -> str:
@@ -28,5 +29,7 @@ def get_internal_gateway_url() -> str:
 
 async def get_internal_gateway_client() -> AsyncIterator[httpx.AsyncClient]:
     base_url = get_internal_gateway_url()
-    async with httpx.AsyncClient(base_url=base_url, timeout=5.0) as client:
+    async with httpx.AsyncClient(
+        base_url=base_url, timeout=5.0, event_hooks={"request": [propagate_request_id]},
+    ) as client:
         yield client

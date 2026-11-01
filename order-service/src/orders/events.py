@@ -15,7 +15,7 @@ from orders.models import (
     CreditResult,
 )
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger(__name__)
 
 
 async def consume_credit_result(
@@ -25,10 +25,15 @@ async def consume_credit_result(
     try:
         result = CreditResult.model_validate_json(message.body)
     except ValidationError:
-        logger.warning("Invalid CreditOperationResult; rejecting without requeue")
+        logger.warning("Invalid CreditOperationResult; rejecting without requeue",
+                       extra={"message_id": message.message_id})
         await message.reject(requeue=False)
         return
 
+    context = {"command_id": result.request_id, "order_id": result.order_id,
+               "operation": result.operation, "message_id": message.message_id,
+               "routing_key": message.routing_key, "redelivered": message.redelivered}
+    logger.info("order.credit_result_received", extra=context)
     try:
         async with session_factory.begin() as session:
             match result.operation:
@@ -39,19 +44,14 @@ async def consume_credit_result(
                 case CreditOperation.TRANSFER:
                     await handle_transfer_result(session, result)
     except ValueError as error:
-        logger.warning("Credit result %s rejected: %s", result.request_id, error)
+        logger.warning("Credit result rejected: %s", error, extra=context)
         await message.reject(requeue=False)
         return
     except Exception:
-        logger.exception("Credit result %s failed; retrying", result.request_id)
+        logger.exception("Credit result failed; retrying", extra=context)
         await asyncio.sleep(2)
         await message.nack(requeue=True)
         return
 
     await message.ack()
-    logger.info(
-        "Credit reply processed and acknowledged: request=%s order=%s operation=%s",
-        result.request_id,
-        result.order_id,
-        result.operation,
-    )
+    logger.info("order.credit_result_processed", extra={**context, "outcome": result.outcome})

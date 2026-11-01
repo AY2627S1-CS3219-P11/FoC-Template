@@ -1,4 +1,17 @@
+map $http_x_request_id $correlation_id {
+    default $request_id;
+    "~^[A-Za-z0-9_-]{1,64}$" $http_x_request_id;
+}
+
+log_format json_access escape=json
+    '{"timestamp":"$time_iso8601","service_name":"internal-gateway",'
+    '"message":"http.request_completed","http_request_id":"$correlation_id",'
+    '"method":"$request_method","status":$status,"duration_seconds":$request_time,'
+    '"upstream_status":"$upstream_status","upstream_seconds":"$upstream_response_time"}';
+
 server {
+    access_log /dev/stdout json_access;
+    error_log /dev/stderr warn;
     listen 80;
     server_name _;
 
@@ -18,6 +31,9 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Request-ID $correlation_id;
+    proxy_hide_header X-Request-ID;
+    add_header X-Request-ID $correlation_id always;
     proxy_connect_timeout 5s;
     proxy_read_timeout 30s;
 

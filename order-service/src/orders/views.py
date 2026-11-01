@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -44,6 +45,7 @@ from orders.schemas import (
     SupplierSnapshot,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter (
     prefix="/orders",
     tags=["Orders"],
@@ -211,6 +213,7 @@ async def create_order_endpoint(
         raise HTTPException(status_code=409, detail=str(error)) from None
 
     if existing is not None:
+        logger.info("order.creation_replayed", extra={"order_id": existing.id})
         return await present_order(session, existing, user.user_id)
 
     try:
@@ -263,6 +266,7 @@ async def create_order_endpoint(
         )
     except CreationConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    logger.info("order.created", extra={"order_id": order.id})
     return await present_order(session, order, user.user_id)
 
 
@@ -277,6 +281,7 @@ async def cancel_order_endpoint(order_id: UUID, user: AuthenticatedUser, session
         if existing_order.requester_id != user.user_id:
             raise HTTPException(status_code=403, detail="Only the requester can update this order")
         raise HTTPException(status_code=409, detail="Order cannot be cancelled in its current state")
+    logger.info("order.cancelled", extra={"order_id": order.id, "user_id": user.user_id})
     return await present_order(session, order, user.user_id)
 
 
