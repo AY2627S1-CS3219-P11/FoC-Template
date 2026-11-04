@@ -15,7 +15,7 @@ Deploy FoC as a short-lived coursework demonstration using ECS Fargate, Amazon M
 - Fargate tasks use public subnets and public IPs for outbound access to Neon, ECR, Secrets Manager and logs. Security groups admit application traffic only from the ALB or explicitly permitted internal task groups. No NAT gateway in this demo design.
 - Amazon MQ uses RabbitMQ, private accessibility, and AMQPS on 5671. Permit only the backend task security group to reach its application endpoint. Start with a single-instance deployment for this disposable demonstration, choosing a currently supported engine version and instance size at implementation time. No public broker console by default.
 - Neon is external to Terraform: use fresh deployment-only databases and distinct service credentials where practical. Require TLS. Do not modify existing development databases.
-- CloudWatch receives container stdout/stderr with seven-day retention. Do not deploy the optional Compose Grafana/Loki stack.
+- CloudWatch receives container stdout/stderr with seven-day retention. Broker general logging is disabled to avoid AWS-created, unmanaged log groups with indefinite retention. Do not deploy the optional Compose Grafana/Loki stack.
 - Omit the Compose-only gateway-demo service and its flag volume. File-based outage toggles are not available in this deployment; ECS operations or a separately reviewed demo mechanism can demonstrate failures.
 
 ## Credentials and state
@@ -33,7 +33,7 @@ Use a flat root under `deploy/terraform/`: versions.tf, providers.tf, variables.
 
 Represent application services in shared data to keep port mappings, image references, health checks, task definitions, and target groups consistent. Outputs include ALB base URL, direct documentation URLs, ECR repository URLs, secret identifiers, cluster/service names, and broker endpoint without credentials.
 
-Provide explicit bootstrap versus runtime deployment sequencing: repositories and secret containers can exist before images and secret values; do not create running services that depend on missing images/secrets. Images use immutable release tags or digests, not mutable `latest`. Specify one consistent image CPU architecture and matching Fargate runtime architecture.
+Provide explicit three-stage deployment sequencing: deploy_runtime=false creates repositories and empty secret containers; deploy_runtime=true with start_services=false provisions networking, broker and task definitions; start_services=true creates running ECS services only after images and complete secrets exist. This allows the provisioned broker endpoint to be inserted into secrets before task startup. Images use immutable release tags or digests, not mutable `latest`. Specify one consistent image CPU architecture and matching Fargate runtime architecture.
 
 ## Application readiness and scaling
 
@@ -41,8 +41,10 @@ Provide explicit bootstrap versus runtime deployment sequencing: repositories an
 - Remove deployment dependence on the hardcoded supplier Neon host by configuring DATABASE_URL directly in ECS. Leave local Compose behavior alone unless a separately tested change is necessary.
 - Verify TLS and URL encoding for Neon and AMQPS; inspect client library support before declaring Amazon MQ compatible.
 - Startup currently creates ORM tables. Preserve the project's explicit full-cutover policy for disposable deployment data; never add automatic database or queue deletion to routine startup or deployment.
-- Keep all services at one task initially. Gate increased replica counts on an audit of bootstrap/table creation races, broker topology, event idempotency, DB connection budgets, and per-process background jobs. In particular, order service starts an expiry worker in every process.
-- Select the demonstration backend after a baseline endpoint/load test and safety audit. Enable request-count target tracking on that backend's direct ALB target group with min=1 and max=3. Derive the threshold from measurements, not a fabricated performance claim.
+- Keep all services at one task initially. Review deployment configuration for broker topology, startup behavior, and database connection budgets without expanding this work into an application concurrency-hardening project.
+- Treat the embedded order expiry worker as a non-issue for the coursework deployment plan: it is not a deployment or scaling blocker. Retain the current worker in each order-service process. Existing conditional database updates, row locks, transactional outbox, and credit command deduplication provide meaningful safeguards. This is an accepted demo-scope decision, not a claim of experimentally proven concurrency safety.
+- Do not write, run, or deploy the proposed expiry-worker concurrency, race, crash-recovery, or duplicate-delivery tests. Worker extraction, leader election, and worker-specific monitoring changes are out of scope.
+- Select the demonstration backend after a baseline endpoint/load test. Enable request-count target tracking on that backend's direct ALB target group with min=1 and max=3. Derive the threshold from measurements, not a fabricated performance claim.
 - Keep other services at one task during the demonstration to show independent scaling. Record task count, request rate, error rate, and latency. Demonstrate scale-out and eventual scale-in with a repeatable external load generator. Do not load-test infrastructure outside this deployment.
 - Clearly label any artificial work or injected latency if introduced through a separate approved change. Scaling cannot be assumed to fix a database/downstream bottleneck.
 
@@ -57,7 +59,7 @@ This is not a high-availability production design: one initial task per service,
 ## Verification and handoff
 
 1. Run Terraform formatting, initialization without backend, validation, and provider-supported configuration tests without AWS credentials where possible. Tests assert listener mappings, network isolation, task architecture, secret references, scale bounds, and deployment phase behavior.
-2. Run existing gateway/UI configuration tests affected by any edits. Add targeted tests before changing application behavior.
+2. Run existing gateway/UI configuration tests affected by any edits. Do not change expiry-worker behavior or add its proposed test suite; those tests are explicitly excluded from this deployment work.
 3. User configures an AWS profile, checks account identity, selects region and source CIDRs, and reviews estimated resource inventory and costs.
 4. Bootstrap ECR and secret containers; securely populate secrets and push versioned images.
 5. Review a saved plan, then explicitly apply runtime infrastructure. Wait for broker readiness and ECS service stability.

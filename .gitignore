@@ -6,6 +6,8 @@ out/
 # Python tool caches (at any repository depth)
 .mypy_cache/
 .ruff_cache/
+__pycache__/
+*.py[cod]
 
 # Environment / secrets
 .env
@@ -13,6 +15,20 @@ out/
 .env.*.local
 *.pem
 *.key
+
+# Folder-local AWS CLI profile and deployment secrets
+.aws-local/
+
+# Terraform local working data (keep .terraform.lock.hcl committed)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.plan
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
 
 # OS
 .DS_Store
