@@ -297,3 +297,13 @@ Key responses:
 Implemented `delivery_location` across validation, persistence, responses and both idempotency lookup paths. Added a non-null text column and named length/nonblank constraint, schema/HTTP tests, and updated database-test fixtures. During implementation, all 28 order-service tests passed against disposable local PostgreSQL; changed-file Ruff checks passed. Changes remain local and uncommitted; UI integration and migration of the existing database are pending.
 
 ---
+
+05-11-2026 15:34 | Usage scenario: Implement separate delivery location in the UI
+
+Prompt:
+Add delivery location to request/response types, send it separately from optional pickup notes, display both separately on order cards and admin case review, preserve retry payloads and idempotency keys, run UI tests/lint/build, and log the implementation.
+
+Key responses:
+Added required `delivery_location` types and a request builder that trims destination/items and sends blank notes as null. Updated order cards and admin review with separate labels. Regression checks cover request normalisation, optional-note rendering, and unchanged payload/key across lost-response retries. All 36 UI tests pass; lint passes with one existing audit-log warning; production builds pass, including Docker's Node 22 build. Refreshed the local UI container. Live authenticated checkout was not verified because backend Neon connections time out. Changes remain uncommitted.
+
+---

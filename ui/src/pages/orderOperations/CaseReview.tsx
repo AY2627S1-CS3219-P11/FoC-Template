@@ -70,7 +70,8 @@ export const CaseReview = ({ order, dispute, detail, disabled, person, onChoose 
         <span className={styles.eyebrow}>{financial ? 'Relevant payment evidence' : 'What was ordered'}</span>
         <h3>{order.supplier_snapshot?.name ?? 'Order'}</h3>
         <ul className={styles.items}>{order.items.map((item, index) => <li key={index}>{item.quantity} × {item.name}</li>)}</ul>
-        {order.pickup_notes && <p className={styles.complaint}><strong>Order notes:</strong> {order.pickup_notes}</p>}
+        <p className={styles.complaint}><strong>Delivery location:</strong> {order.delivery_location}</p>
+        {order.pickup_notes && <p className={styles.complaint}><strong>Pickup notes:</strong> {order.pickup_notes}</p>}
         <dl className={styles.orderFacts}><div><dt>Order credits</dt><dd>{order.credits}</dd></div><div><dt>Fulfilment milestone</dt><dd>{statusLabels[order.status]}</dd></div></dl>
         <p className={styles.meta}>The recorded order milestone is separate from the dispute decision and credit settlement.</p>
         {financial && <>
