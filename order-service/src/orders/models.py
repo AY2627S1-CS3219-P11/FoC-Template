@@ -43,7 +43,32 @@ class RoutingKey(StrEnum):
     CREDIT_RESERVE = "credit.reserve"
     CREDIT_RELEASE = "credit.release"
     CREDIT_TRANSFER = "credit.transfer"
-    CREDIT_OPERATION_RESULT = "credit.operation.result"
+    CREDIT_OPERATION_RESULT = "credit.operation.result"  # Legacy consumption only.
+    CREDIT_RESERVED = "credit.reserved"
+    CREDIT_RESERVATION_REJECTED = "credit.reservation.rejected"
+    CREDIT_RELEASED = "credit.released"
+    CREDIT_RELEASE_REJECTED = "credit.release.rejected"
+    CREDIT_TRANSFERRED = "credit.transferred"
+    CREDIT_TRANSFER_REJECTED = "credit.transfer.rejected"
+
+
+# Wire identities only. Stored result models and JSON remain unchanged.
+CREDIT_RESULT_EVENTS: dict[
+    tuple[CreditOperation, CreditOperationOutcome], tuple[str, RoutingKey]
+] = {
+    (CreditOperation.RESERVE, CreditOperationOutcome.SUCCEEDED):
+        ("CreditReserved", RoutingKey.CREDIT_RESERVED),
+    (CreditOperation.RESERVE, CreditOperationOutcome.REJECTED):
+        ("CreditReservationRejected", RoutingKey.CREDIT_RESERVATION_REJECTED),
+    (CreditOperation.RELEASE, CreditOperationOutcome.SUCCEEDED):
+        ("CreditReleased", RoutingKey.CREDIT_RELEASED),
+    (CreditOperation.RELEASE, CreditOperationOutcome.REJECTED):
+        ("CreditReleaseRejected", RoutingKey.CREDIT_RELEASE_REJECTED),
+    (CreditOperation.TRANSFER, CreditOperationOutcome.SUCCEEDED):
+        ("CreditTransferred", RoutingKey.CREDIT_TRANSFERRED),
+    (CreditOperation.TRANSFER, CreditOperationOutcome.REJECTED):
+        ("CreditTransferRejected", RoutingKey.CREDIT_TRANSFER_REJECTED),
+}
 
 
 class ReserveCreditCommand(BaseModel):

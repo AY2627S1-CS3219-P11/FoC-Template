@@ -51,7 +51,12 @@ class CreditRejectionReason(StrEnum):
 class MessageType(StrEnum):
     USER_CREATED = "UserCreated"
     CREDIT_ACCOUNTS_SYNC_REQUESTED = "CreditAccountsSyncRequested"
-    CREDIT_OPERATION_RESULT = "CreditOperationResult"
+    CREDIT_RESERVED = "CreditReserved"
+    CREDIT_RESERVATION_REJECTED = "CreditReservationRejected"
+    CREDIT_RELEASED = "CreditReleased"
+    CREDIT_RELEASE_REJECTED = "CreditReleaseRejected"
+    CREDIT_TRANSFERRED = "CreditTransferred"
+    CREDIT_TRANSFER_REJECTED = "CreditTransferRejected"
 
 
 class ExchangeName(StrEnum):
@@ -72,7 +77,31 @@ class RoutingKey(StrEnum):
     CREDIT_RESERVE = "credit.reserve"
     CREDIT_RELEASE = "credit.release"
     CREDIT_TRANSFER = "credit.transfer"
-    CREDIT_OPERATION_RESULT = "credit.operation.result"
+    CREDIT_RESERVED = "credit.reserved"
+    CREDIT_RESERVATION_REJECTED = "credit.reservation.rejected"
+    CREDIT_RELEASED = "credit.released"
+    CREDIT_RELEASE_REJECTED = "credit.release.rejected"
+    CREDIT_TRANSFERRED = "credit.transferred"
+    CREDIT_TRANSFER_REJECTED = "credit.transfer.rejected"
+
+
+# Wire identities only. Stored result models and JSON remain unchanged.
+CREDIT_RESULT_EVENTS: dict[
+    tuple[CreditOperation, CreditOperationOutcome], tuple[str, RoutingKey]
+] = {
+    (CreditOperation.RESERVE, CreditOperationOutcome.SUCCEEDED):
+        (MessageType.CREDIT_RESERVED, RoutingKey.CREDIT_RESERVED),
+    (CreditOperation.RESERVE, CreditOperationOutcome.REJECTED):
+        (MessageType.CREDIT_RESERVATION_REJECTED, RoutingKey.CREDIT_RESERVATION_REJECTED),
+    (CreditOperation.RELEASE, CreditOperationOutcome.SUCCEEDED):
+        (MessageType.CREDIT_RELEASED, RoutingKey.CREDIT_RELEASED),
+    (CreditOperation.RELEASE, CreditOperationOutcome.REJECTED):
+        (MessageType.CREDIT_RELEASE_REJECTED, RoutingKey.CREDIT_RELEASE_REJECTED),
+    (CreditOperation.TRANSFER, CreditOperationOutcome.SUCCEEDED):
+        (MessageType.CREDIT_TRANSFERRED, RoutingKey.CREDIT_TRANSFERRED),
+    (CreditOperation.TRANSFER, CreditOperationOutcome.REJECTED):
+        (MessageType.CREDIT_TRANSFER_REJECTED, RoutingKey.CREDIT_TRANSFER_REJECTED),
+}
 
 
 MAX_CREDITS = 9_223_372_036_854_775_807

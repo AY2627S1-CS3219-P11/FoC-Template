@@ -39,6 +39,32 @@ results are harmless; conflicting replies fail validation. Unknown outcomes repl
 under the original request ID with capped exponential backoff and jitter. Explicit
 rejection stops automatic replay.
 
+## Credit event contract
+
+Credit publishes six event identities on the existing durable `credit_events`
+direct exchange. The AMQP `type` and routing key are:
+
+| AMQP type | Routing key |
+| --- | --- |
+| `CreditReserved` | `credit.reserved` |
+| `CreditReservationRejected` | `credit.reservation.rejected` |
+| `CreditReleased` | `credit.released` |
+| `CreditReleaseRejected` | `credit.release.rejected` |
+| `CreditTransferred` | `credit.transferred` |
+| `CreditTransferRejected` | `credit.transfer.rejected` |
+
+The three commands (`credit.reserve`, `credit.release`, `credit.transfer`) are
+unchanged. Order binds the existing durable `order_credit_results` queue to all
+six keys and still orchestrates settlement. Admin Dispute remains within Order.
+Database schemas and stored command/result JSON formats are unchanged. Duplicate
+commands replay the stored outcome with the new event identity, without repeating
+financial operations.
+
+Deploy Order first so its new bindings exist before upgrading Credit. Order also
+retains the `credit.operation.result` binding and accepts legacy
+`CreditOperationResult` deliveries while old publishers and queued results drain.
+Credit publishes only the six new identities. Do not purge the queue or outboxes.
+
 ## Disputes and administration
 
 Participants can `PATCH /orders/{order_id}/dispute` with `{"reason":"..."}` from
