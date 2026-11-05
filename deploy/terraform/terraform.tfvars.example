@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars (gitignored). Do not put passwords in this file.
 aws_region            = "ap-southeast-1"
 project_name          = "foc-demo"
-allowed_ingress_cidrs = ["203.0.113.10/32"] # Replace with your real public IP/CIDRs.
+allowed_ingress_cidrs = ["0.0.0.0/0"] # Replace with your real public IP/CIDRs.
 
 # Phase 1: repositories and empty Secrets Manager containers.
 deploy_runtime = false
