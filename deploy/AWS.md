@@ -9,7 +9,7 @@ This is a **manual, disposable demo deployment**, not a production availability 
 Use Bash on Linux/macOS, AWS CLI v2, Terraform >= 1.11, Python 3, Git, and Docker with Buildx. Run commands from the repository root unless shown otherwise.
 
 - Choose one AWS account and region; examples use `ap-southeast-1`.
-- Use deployment-only credentials with permission to manage the resources in the Terraform files, including IAM roles and service-linked roles if absent. Do not use an AWS root access key. Temporary lab credentials are fine; renew their session token when they expire.
+- Use your university IAM Identity Center (SSO) account and an assigned role with permission to manage the resources in the Terraform files, including IAM roles and service-linked roles if absent. SSO login does not grant extra permissions; confirm your university permits these resources. No manually copied access keys are needed.
 - Obtain your demonstrator/load generator/professor's public IPv4 CIDRs. Allow only those sources initially. An address ending `/32` allows one IPv4 address. These rules intentionally apply to the UI and exposed backend ports.
 - Provision fresh Neon deployment databases, not development databases. Prefer four separate databases/users: user, supplier, credit, order. The database users need table/index creation permissions because services create their tables at startup. Choose a Neon region close to AWS and review connection limits.
 - Backend Swagger will be at `http://<ALB-hostname>:<port>/docs`. Use the hostname; ALB IP addresses can change.
@@ -33,48 +33,52 @@ It selects profile `foc-demo`, with:
 <repository>/.aws-local/credentials
 ```
 
-It clears ambient static credentials, session tokens, web-identity/container credential overrides, custom AWS endpoint overrides (including LocalStack), and region overrides so another account or endpoint does not silently take precedence. EC2 metadata and legacy Boto credential-file fallback are disabled. Missing local credentials should fail rather than use your laptop's `~/.aws` profile. The helper never reads or prints credentials.
+The helper is an optional isolation convenience, not an AWS requirement. This guide uses it so the CLI and Terraform select the same project-local profile rather than your laptop's `~/.aws/config`. It clears ambient static credentials, session tokens, web-identity/container credential overrides, custom AWS endpoint overrides (including LocalStack), and region overrides. EC2 metadata and legacy Boto credential-file fallback are disabled. The helper never reads or prints credentials and does not log you in.
 
-Configure a fresh profile with **masked prompts**, rather than putting credentials in command arguments or shell history:
+### First-time SSO setup
+
+After sourcing the helper, configure the profile using AWS's browser-based wizard:
 
 ```bash
-python3 - <<'PY'
-import configparser
-import getpass
-import os
-from pathlib import Path
-
-config = configparser.ConfigParser()
-config['profile foc-demo'] = {'region': 'ap-southeast-1', 'output': 'json'}
-credentials = configparser.ConfigParser()
-credentials['foc-demo'] = {
-    'aws_access_key_id': getpass.getpass('AWS access key ID: '),
-    'aws_secret_access_key': getpass.getpass('AWS secret access key: '),
-}
-token = getpass.getpass('AWS session token (Enter only for long-lived keys): ')
-if token:
-    credentials['foc-demo']['aws_session_token'] = token
-for env_name, content in [('AWS_CONFIG_FILE', config), ('AWS_SHARED_CREDENTIALS_FILE', credentials)]:
-    path = Path(os.environ[env_name])
-    if path.exists():
-        raise SystemExit(f'{path} already exists; edit/renew it deliberately instead of overwriting it.')
-    with path.open('x') as stream:
-        content.write(stream)
-    path.chmod(0o600)
-print('Local AWS profile written; no credential values printed.')
-PY
+aws configure sso --profile foc-demo
 ```
 
-Change the nonsecret region if desired:
+Use these answers:
+
+| Prompt | Answer |
+| --- | --- |
+| SSO session name | `foc-demo` |
+| SSO start URL | Your university's `https://<university>.awsapps.com/start` URL |
+| SSO region | The university's IAM Identity Center region; **not necessarily `ap-southeast-1`** |
+| SSO registration scopes | Accept `sso:account:access` |
+| AWS account and role | Select the intended coursework account and assigned deployment role |
+| Default client region | `ap-southeast-1` |
+| Default output format | `json` |
+
+Find the SSO start URL and SSO region in the university access portal: select your account/role's **Access keys**, then the **IAM Identity Center credentials** instructions. You only need the SSO configuration values, not the displayed access keys. Ask your university administrator if these details or the required role are unavailable.
+
+Approve the login in your browser. If the terminal is on a different device from your browser, use `aws configure sso --profile foc-demo --use-device-code` instead. Only approve login requests you initiated.
+
+The wizard writes the SSO session and profile to `.aws-local/config`. SSO does not need a `.aws-local/credentials` file. If a previous access-key setup created credentials for `foc-demo` there, remove that profile's static credentials deliberately before switching to SSO; do not mix the two methods.
+
+### Login and verify identity
+
+In each new Bash terminal, run from the repository root:
 
 ```bash
-aws configure set region ap-southeast-1 --profile foc-demo
+source deploy/aws-env.sh
+umask 077
+aws sso login --profile foc-demo
 aws sts get-caller-identity
 ```
 
-**Check the account ID and identity against your intended coursework account before proceeding.** This command is the first account API check; it does not create resources. Set the same region in Terraform. If credentials expire, replace the local credentials file securely with all three fresh temporary values, then repeat identity verification. Do not mix an old session token with a new access key.
+For a browser on a different device, add `--use-device-code` to `aws sso login`. Repeat login when the SSO session expires; no access-key copying or session-token editing is needed.
 
-For stricter shell scoping, start a subshell before sourcing, then `exit` when finished. Opening a new terminal restores its normal environment; changing directories alone does not. Do not commit `.aws-local/` or share it in a report/screenshot. CLI configuration is plaintext at rest; gitignore is not encryption or access control.
+**Check the returned account ID and role against your intended coursework account before proceeding.** Login and identity verification do not create deployment resources. Set Terraform's `aws_region` to the default client region, `ap-southeast-1`; the SSO region is independent.
+
+**Only the profile configuration is project-local.** AWS still caches SSO tokens under `~/.aws/sso/cache`; the helper does not isolate that cache. Protect it as credential material and do not share it. `aws sso logout` clears cached SSO sessions across profiles, not just this project.
+
+For stricter shell scoping, start a subshell before sourcing, then `exit` when finished. Opening a new terminal restores its normal environment; changing directories alone does not. Do not commit `.aws-local/` or share it in a report/screenshot. Local configuration and secret files are plaintext at rest; gitignore is not encryption or access control.
 
 ## 3. Configure Terraform and protect its state
 
@@ -360,7 +364,7 @@ At the end of the demonstration:
 4. Nonempty ECR repositories refuse deletion by default. Before the final destroy, either delete only the reviewed demo image digests or set `force_delete_images = true` in tfvars, review/apply that setting while the repositories still exist, then generate a fresh destroy plan. Do not delete all registries/account resources indiscriminately.
 5. Verify there are no remaining demo ALBs, ECS tasks/services, MQ brokers, Cloud Map records/namespaces, log groups, ECR images/repositories or public IPv4 allocations. Some managed deletions take time. Check retained/scheduled-deletion Secrets Manager secrets and state-backend resources separately; Terraform destroy does not automatically delete a separately managed state bucket. AWS-created service-linked IAM roles can also remain; these may be shared by other workloads, so do not delete them indiscriminately.
 6. Delete the **deployment-only** Neon project/databases separately in Neon if no longer needed. Terraform does not own them.
-7. Revoke the deployment AWS credentials/session, logout from ECR, unset the password environment variable, and remove local credential/secret files only after any needed recovery/cleanup is complete. Keep state/backups encrypted until teardown is verified; deleting local state is not deleting AWS infrastructure.
+7. Log out of SSO (`aws sso logout`, which clears cached sessions across profiles), log out from ECR, unset the password environment variable, and remove local configuration/secret files only after any needed recovery/cleanup is complete. Keep state/backups encrypted until teardown is verified; deleting local state is not deleting AWS infrastructure.
 
 ```bash
 docker logout "$ECR_REGISTRY"
@@ -374,6 +378,7 @@ Read-only review found that user, credit and order use `aio_pika.connect_robust`
 
 Amazon MQ RabbitMQ 4.2 defaults unspecified queue types to quorum and has a quorum redelivery limit of 20; review this operational behavior when choosing an engine. The app's durable queue declarations are compatible in shape, but no live engine migration/delivery-limit experiment is claimed. The broker is new and disposable, not an in-place migration of your development queue data.
 
+- [AWS: Configuring IAM Identity Center authentication with the AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sso.html)
 - [AWS: RabbitMQ 4.2 compatibility and default queue behavior](https://docs.aws.amazon.com/amazon-mq/latest/developer-guide/rabbitmq-42.html)
 - [AWS: RabbitMQ broker instance types and mq.t3.micro deprecation](https://docs.aws.amazon.com/amazon-mq/latest/developer-guide/rmq-broker-instance-types.html)
 - [aio-pika: AMQP/AMQPS URL parameters](https://docs.aio-pika.com/url-parameters.html)

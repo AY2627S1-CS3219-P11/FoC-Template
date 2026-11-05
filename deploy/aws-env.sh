@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Source from Bash. This deliberately selects this repository's AWS profile,
-# not ~/.aws or ambient static/container/web-identity credentials.
+# Source from Bash. Selects this repository's AWS config/profile, not ~/.aws
+# config or ambient static/container/web-identity credentials. Does not log in.
+# First setup: aws configure sso --profile foc-demo
+# Later sessions: aws sso login --profile foc-demo
+# SSO tokens still use the shared ~/.aws/sso/cache, not .aws-local/.
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     printf '%s\n' 'Use: source deploy/aws-env.sh (from the repository root, in Bash).' >&2
     exit 1

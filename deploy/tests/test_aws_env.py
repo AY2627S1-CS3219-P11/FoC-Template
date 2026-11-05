@@ -1,4 +1,4 @@
-"""Credential-free tests for the source-only, repository-local AWS environment."""
+"""Credential-free checks for profile isolation; no SSO login or AWS calls."""
 
 import json
 import os
@@ -42,41 +42,28 @@ class AwsEnvironmentTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout), result
 
-    def test_resolves_repository_paths_from_another_directory(self):
-        values, _ = self.source()
+    def test_selects_local_profile_and_clears_competing_settings(self):
+        overrides = dict.fromkeys(CREDENTIAL_OVERRIDES + ENDPOINT_OVERRIDES, "SENTINEL_DO_NOT_PRINT")
+        overrides.update(
+            AWS_PROFILE="another-account", AWS_REGION="us-east-1", AWS_DEFAULT_REGION="us-west-2",
+            AWS_CONFIG_FILE="/nonexistent/config", AWS_SHARED_CREDENTIALS_FILE="/nonexistent/credentials",
+            BOTO_CONFIG="/nonexistent/boto.cfg",
+        )
+        values, result = self.source(overrides)
         self.assertEqual(values["AWS_CONFIG_FILE"], str(ROOT / ".aws-local" / "config"))
         self.assertEqual(values["AWS_SHARED_CREDENTIALS_FILE"], str(ROOT / ".aws-local" / "credentials"))
         self.assertEqual(values["AWS_PROFILE"], "foc-demo")
         self.assertEqual(values["AWS_EC2_METADATA_DISABLED"], "true")
-
-    def test_neutralizes_ambient_credentials_and_region_overrides(self):
-        overrides = dict.fromkeys(CREDENTIAL_OVERRIDES, "SENTINEL_DO_NOT_PRINT")
-        overrides.update(AWS_PROFILE="another-account", AWS_REGION="us-east-1", AWS_DEFAULT_REGION="us-west-2")
-        values, result = self.source(overrides)
-        for name in CREDENTIAL_OVERRIDES + ("AWS_REGION", "AWS_DEFAULT_REGION"):
-            self.assertIsNone(values[name], name)
-        self.assertEqual(values["AWS_PROFILE"], "foc-demo")
-        self.assertNotIn("SENTINEL_DO_NOT_PRINT", result.stdout + result.stderr)
-
-    def test_disables_legacy_boto_config_fallback(self):
-        values, _ = self.source({"BOTO_CONFIG": "/nonexistent/other-account-boto.cfg"})
         self.assertEqual(values["BOTO_CONFIG"], "/dev/null")
-
-    def test_clears_ambient_endpoint_overrides(self):
-        values, _ = self.source(dict.fromkeys(ENDPOINT_OVERRIDES, "http://localhost:4566"))
-        for name in ENDPOINT_OVERRIDES:
+        for name in CREDENTIAL_OVERRIDES + ENDPOINT_OVERRIDES + ("AWS_REGION", "AWS_DEFAULT_REGION"):
             self.assertIsNone(values[name], name)
+        self.assertNotIn("SENTINEL_DO_NOT_PRINT", result.stdout + result.stderr)
 
     def test_executing_instead_of_sourcing_explains_usage(self):
         result = subprocess.run(["bash", str(HELPER)], text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("source", result.stderr)
         self.assertIn("deploy/aws-env.sh", result.stderr)
-
-    def test_does_not_read_or_print_credentials(self):
-        values, result = self.source({"AWS_SHARED_CREDENTIALS_FILE": "/nonexistent/credentials"})
-        self.assertNotIn("secret_access_key", result.stdout + result.stderr)
-        self.assertEqual(values["AWS_SHARED_CREDENTIALS_FILE"], str(ROOT / ".aws-local" / "credentials"))
 
 
 if __name__ == "__main__":
