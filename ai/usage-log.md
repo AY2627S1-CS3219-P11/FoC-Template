@@ -265,3 +265,25 @@ Added `CreditAuditLog` in [orm_models.py](/Users/weihungloh/FoC-Template/credit-
 Verified PostgreSQL DDL and constraint behavior locally. Only this file changed; nothing committed.
 
 ---
+
+04-11-2026 14:11 | Usage scenario: Investigate backend delivery-location, planned implementation
+
+Prompt: I went through the current code and noticed delivery location is stored inside optional pickup_notes. The UI requires it, but the API allows an order without a destination. I’d like to make delivery location a separate required field so the backend enforces it too.
+
+investgate this, and create a plan as to how we can refactor this to fix the gap.
+
+
+Key responses:
+Identified problem:
+Delivery location is bundled into optional pickup_notes. The UI requires it, but the original API and database allow orders without a destination.
+This means a caller can bypass UI validation and create an order that a courier cannot fulfil.
+
+Created refactor plan:
+- Add a separate required delivery_location, trimmed to 1–500 characters.
+- Enforce it in the API and database.
+- Include it in responses and idempotency checks.
+- Update the UI to send and display it separately.
+- Keep pickup notes optional.
+- Migrate existing data or recreate the database under the repository’s deployment policy.
+
+---
