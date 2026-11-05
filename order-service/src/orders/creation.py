@@ -35,6 +35,7 @@ def _validate_key(idempotency_key: str) -> None:
 def _fingerprint(
     supplier_id: UUID,
     items: list[dict],
+    delivery_location: str,
     pickup_notes: str | None,
     credits: int,
 ) -> str:
@@ -42,6 +43,7 @@ def _fingerprint(
     payload = {
         "supplier_id": str(supplier_id),
         "items": items,
+        "delivery_location": delivery_location,
         "pickup_notes": pickup_notes,
         "credits": credits,
     }
@@ -62,6 +64,7 @@ async def lookup_creation(
     idempotency_key: str,
     supplier_id: UUID,
     items: list[dict],
+    delivery_location: str,
     pickup_notes: str | None,
     credits: int,
 ) -> ErrandRequest | None:
@@ -74,7 +77,10 @@ async def lookup_creation(
     key = await session.get(OrderCreationKey, (requester_id, idempotency_key))
     if key is None:
         return None
-    if key.request_fingerprint != _fingerprint(supplier_id, items, pickup_notes, credits):
+    if key.request_fingerprint != _fingerprint(
+        supplier_id=supplier_id, items=items, delivery_location=delivery_location,
+        pickup_notes=pickup_notes, credits=credits,
+    ):
         raise CreationConflict("Idempotency-Key was already used for a different order.")
     order = await session.get(ErrandRequest, key.order_id)
     if order is None:
@@ -89,6 +95,7 @@ async def create_order_idempotently(
     supplier_id: UUID,
     supplier_snapshot: dict,
     items: list[dict],
+    delivery_location: str,
     pickup_notes: str | None,
     credits: int,
 ) -> ErrandRequest:
@@ -99,7 +106,9 @@ async def create_order_idempotently(
             select(func.pg_advisory_xact_lock(_lock_id(requester_id, idempotency_key)))
         )
         existing = await lookup_creation(
-            session, requester_id, idempotency_key, supplier_id, items, pickup_notes, credits
+            session=session, requester_id=requester_id, idempotency_key=idempotency_key,
+            supplier_id=supplier_id, items=items, delivery_location=delivery_location,
+            pickup_notes=pickup_notes, credits=credits,
         )
         if existing is not None:
             await session.commit()
@@ -110,6 +119,7 @@ async def create_order_idempotently(
         order = ErrandRequest(
             id=uuid4(), requester_id=requester_id, supplier_id=supplier_id,
             supplier_snapshot=supplier_snapshot, items=items, pickup_notes=pickup_notes,
+            delivery_location=delivery_location,
             credits=credits, status=Status.INIT, credit_status=CreditStatus.PENDING,
             courier_id=None, created_at=now, expires_at=now + init_window(), updated_at=now,
         )
@@ -118,7 +128,10 @@ async def create_order_idempotently(
         session.add(OrderCreationKey(
             requester_id=requester_id, idempotency_key=idempotency_key,
             order_id=order.id,
-            request_fingerprint=_fingerprint(supplier_id, items, pickup_notes, credits),
+            request_fingerprint=_fingerprint(
+                supplier_id=supplier_id, items=items, delivery_location=delivery_location,
+                pickup_notes=pickup_notes, credits=credits,
+            ),
         ))
         add_credit_command(session, ReserveCreditCommand(
             request_id=uuid4(), order_id=order.id, requester_id=requester_id, amount=credits,

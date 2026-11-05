@@ -287,3 +287,13 @@ Created refactor plan:
 - Migrate existing data or recreate the database under the repository’s deployment policy.
 
 ---
+
+05-11-2026 15:17 | Usage scenario: Implement backend delivery-location refactor
+
+Prompt:
+Make delivery location a separate required backend field, trimmed to 1–500 characters. Update request/response schemas, ORM constraints, order creation and idempotency fingerprints. Keep pickup notes optional and add regression tests.
+
+Key responses:
+Implemented `delivery_location` across validation, persistence, responses and both idempotency lookup paths. Added a non-null text column and named length/nonblank constraint, schema/HTTP tests, and updated database-test fixtures. During implementation, all 28 order-service tests passed against disposable local PostgreSQL; changed-file Ruff checks passed. Changes remain local and uncommitted; UI integration and migration of the existing database are pending.
+
+---

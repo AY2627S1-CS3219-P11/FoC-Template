@@ -206,8 +206,14 @@ async def create_order_endpoint(
 
     try:
         existing = await lookup_creation(
-            session, user.user_id, idempotency_key, payload.supplier_id,
-            items, payload.pickup_notes, payload.credits,
+            session=session,
+            requester_id=user.user_id,
+            idempotency_key=idempotency_key,
+            supplier_id=payload.supplier_id,
+            items=items,
+            delivery_location=payload.delivery_location,
+            pickup_notes=payload.pickup_notes,
+            credits=payload.credits,
         )
     except CreationConflict as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
@@ -261,6 +267,7 @@ async def create_order_endpoint(
             supplier_id=payload.supplier_id,
             supplier_snapshot=supplier_snapshot.model_dump(mode="json"),
             items=items,
+            delivery_location=payload.delivery_location,
             pickup_notes=payload.pickup_notes,
             credits=payload.credits,
         )

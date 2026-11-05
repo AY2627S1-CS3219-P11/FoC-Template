@@ -4,7 +4,8 @@ import asyncio
 import os
 import unittest
 from datetime import timedelta
-from uuid import uuid4
+from typing import TypedDict
+from uuid import UUID, uuid4
 
 from sqlalchemy import event, func, select, text, update
 from sqlalchemy.engine import make_url
@@ -29,6 +30,15 @@ from orders.orm_models import (
 from orders.policy import participant_actions
 
 
+class CreationFields(TypedDict):
+    supplier_id: UUID
+    supplier_snapshot: dict
+    items: list[dict]
+    delivery_location: str
+    pickup_notes: str | None
+    credits: int
+
+
 @unittest.skipUnless(os.environ.get("ORDER_TEST_DATABASE_URL"), "requires ORDER_TEST_DATABASE_URL")
 class OrderDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -47,8 +57,9 @@ class OrderDatabaseTests(unittest.IsolatedAsyncioTestCase):
             await connection.run_sync(Base.metadata.create_all)
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False)
         self.requester = uuid4()
-        self.fields = dict(
+        self.fields: CreationFields = dict(
             supplier_id=uuid4(), supplier_snapshot={},
+            delivery_location="COM2, Level 2, lift lobby",
             items=[{"name": "Tea", "quantity": 1}], pickup_notes=None, credits=10,
         )
 
@@ -58,9 +69,11 @@ class OrderDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.engine.dispose()
 
     async def create(self, **changes):
+        fields: CreationFields = {**self.fields, **changes}
         async with self.sessions() as session:
             return await creation.create_order_idempotently(
-                session, self.requester, "key", **(self.fields | changes),
+                session=session, requester_id=self.requester, idempotency_key="key",
+                **fields,
             )
 
     async def confirm_reserve(self, session, order_id):
