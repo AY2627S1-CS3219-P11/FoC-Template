@@ -11,8 +11,10 @@ from orders.credit_results import (
     handle_transfer_result,
 )
 from orders.models import (
+    CREDIT_RESULT_EVENTS,
     CreditOperation,
     CreditResult,
+    RoutingKey,
 )
 
 logger = logging.getLogger(__name__)
@@ -24,8 +26,14 @@ async def consume_credit_result(
 ) -> None:
     try:
         result = CreditResult.model_validate_json(message.body)
-    except ValidationError:
-        logger.warning("Invalid CreditOperationResult; rejecting without requeue",
+        expected = CREDIT_RESULT_EVENTS[result.operation, result.outcome]
+        identity = (message.type, message.routing_key)
+        # Drain results queued by the old publisher during a rolling deployment.
+        legacy = ("CreditOperationResult", RoutingKey.CREDIT_OPERATION_RESULT)
+        if identity not in (expected, legacy):
+            raise ValueError("Credit event metadata contradicts its payload")
+    except (ValidationError, ValueError):
+        logger.warning("Invalid credit event; rejecting without requeue",
                        extra={"message_id": message.message_id})
         await message.reject(requeue=False)
         return

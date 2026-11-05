@@ -16,8 +16,31 @@ Deployment uses a [clean database and queue cutover](../README.md#deployment).
 
 ## Commands and results
 
-Commands receive durable `SUCCEEDED` or `REJECTED` results on
-`credit.operation.result` (AMQP type `CreditOperationResult`). Results contain
+Credit publishes six event identities on the existing durable `credit_events`
+direct exchange. The AMQP `type` and routing key are:
+
+| AMQP type | Routing key |
+| --- | --- |
+| `CreditReserved` | `credit.reserved` |
+| `CreditReservationRejected` | `credit.reservation.rejected` |
+| `CreditReleased` | `credit.released` |
+| `CreditReleaseRejected` | `credit.release.rejected` |
+| `CreditTransferred` | `credit.transferred` |
+| `CreditTransferRejected` | `credit.transfer.rejected` |
+
+The three commands (`credit.reserve`, `credit.release`, `credit.transfer`) are
+unchanged. Order binds the existing durable `order_credit_results` queue to all
+six keys and still orchestrates settlement. Admin Dispute remains within Order.
+Database schemas and stored command/result JSON formats are unchanged. Duplicate
+commands replay the stored outcome with the new event identity, without repeating
+financial operations.
+
+Deploy Order first so its new bindings exist before upgrading Credit. Order also
+retains the `credit.operation.result` binding and accepts legacy
+`CreditOperationResult` deliveries while old publishers and queued results drain.
+Credit publishes only the six new identities. Do not purge the queue or outboxes.
+
+Commands receive durable `SUCCEEDED` or `REJECTED` results. Results contain
 `request_id`, `order_id`, `operation`, `outcome` and `reason` (null on success).
 Identical retries replay the stored decision; changed commands under the same
 request ID are rejected.

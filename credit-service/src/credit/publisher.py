@@ -7,7 +7,7 @@ from aio_pika.abc import AbstractExchange
 from pamqp.commands import Basic
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from credit.models import CreditOutboxResponse, MessageType, RoutingKey
+from credit.models import CREDIT_RESULT_EVENTS, CreditOutboxResponse
 from credit.repository import find_pending_credit_outcome
 
 logger = logging.getLogger(__name__)
@@ -29,17 +29,18 @@ async def publish_pending_credit_events(
                 if payload.request_id != outbox_response.request_id:
                     raise ValueError("The stored outcome has a different request ID.")
                 logger.info("credit.result_publishing", extra=context)
+                event_type, routing_key = CREDIT_RESULT_EVENTS[payload.operation, payload.outcome]
                 # RabbitMQ routes this result to Order's queue
                 confirmation = await exchange.publish(
                     aio_pika.Message(
                         body=payload.model_dump_json().encode("utf-8"),
                         content_type="application/json",
-                        type=MessageType.CREDIT_OPERATION_RESULT,
+                        type=event_type,
                         message_id=str(outbox_response.request_id),
                         correlation_id=str(outbox_response.request_id),
                         delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
                     ),
-                    routing_key=RoutingKey.CREDIT_OPERATION_RESULT,
+                    routing_key=routing_key,
                     mandatory=True,
                     timeout=5,
                 )

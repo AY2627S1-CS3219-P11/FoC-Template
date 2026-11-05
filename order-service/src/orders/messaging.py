@@ -8,7 +8,7 @@ from aio_pika.exceptions import AMQPConnectionError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from orders.events import consume_credit_result
-from orders.models import ExchangeName, RoutingKey
+from orders.models import CREDIT_RESULT_EVENTS, ExchangeName, RoutingKey
 from workers.outbox import publish_outbox_messages
 
 
@@ -48,6 +48,9 @@ async def initialize_order_messaging(
             ExchangeName.CREDIT_EVENTS, aio_pika.ExchangeType.DIRECT, durable=True,
         )
         result_queue = await channel.declare_queue("order_credit_results", durable=True)
+        for _, routing_key in CREDIT_RESULT_EVENTS.values():
+            await result_queue.bind(result_exchange, routing_key=routing_key)
+        # Keep the old binding while legacy publishers and queued deliveries drain.
         await result_queue.bind(result_exchange, routing_key=RoutingKey.CREDIT_OPERATION_RESULT)
         consumer_tag = await result_queue.consume(
             partial(consume_credit_result, session_factory=session_factory), no_ack=False,
