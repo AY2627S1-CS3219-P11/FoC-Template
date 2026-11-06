@@ -17,7 +17,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 | Your Name | Your ownership |
 | Your Name | Your ownership |
 | Your Name | Your ownership |
-| Your Name | Your ownership |
+| Wei Hung | **User Service & Authentication:** Set up a reusable React/Vite frontend foundation with shared API utilities, components, and layouts, alongside the FastAPI User Service. Implemented user management, JWT-based session authentication, protected routes, role-based access control, and the Admin Manager Portal for granting/revoking administrator privileges.<br><br>**Credit Service:** Designed PostgreSQL wallet, reservation, and audit-log schemas; implemented automatic 100-credit allocation via `UserCreated` events and atomic reserve, release, and transfer operations with row locking and idempotency.<br><br>**Asynchronous Messaging:** Integrated RabbitMQ credit commands and success/rejection events, transactional outbox, reliable event publishing, duplicate-request handling, and persistent operation outcomes.<br><br>**Frontend & Deployment:** Developed credit audit-log interfaces, integrated service APIs, and configured Docker Compose and PostgreSQL database connections.<br><br>**Prototyping & Documentation:** Developed an draft UI prototype, proposed Figma Make for collaborative prototyping, and contributed to D3 Order Lifecycle Diagram, and demo preparation. |
 | Your Name | Your ownership |
 
 ---
