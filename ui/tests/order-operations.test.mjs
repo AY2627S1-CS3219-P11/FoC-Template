@@ -26,10 +26,20 @@ after(() => rm(directory, { recursive: true, force: true }))
 const dispute = { id: 'case-1', kind: 'fulfilment', opened_by: 'courier', closed_at: null, reason: 'Item unavailable', available_actions: [] }
 const order = { id: 'order-1', requester_id: 'requester', courier_id: 'courier', status: 'picked_up', credit_operation: 'RESERVE', credit_status: 'succeeded', items: [], disputes: [dispute], available_actions: [], is_active: true, review_category: 'fulfilment' }
 const evidence = { diagnostics: { accounts: [], audit_logs: [] }, commands: [], audit: [] }
-const renderReview = (case_, detail = evidence) => renderToStaticMarkup(createElement(CaseReview, {
-  order: { ...order, disputes: [case_] }, dispute: case_, detail, disabled: false,
+const renderReview = (case_, detail = evidence, orderFields = {}) => renderToStaticMarkup(createElement(CaseReview, {
+  order: { ...order, ...orderFields, disputes: [case_] }, dispute: case_, detail, disabled: false,
   person: (id) => id ?? 'System', onChoose: () => {},
 }))
+
+test('case review displays destination separately from optional pickup notes', () => {
+  const location = { delivery_location: 'COM2, Level 2, lift lobby', pickup_notes: null }
+  const withoutNotes = renderReview(dispute, evidence, location)
+  assert.match(withoutNotes, /<strong>Delivery location:<\/strong> COM2, Level 2, lift lobby/)
+  assert.doesNotMatch(withoutNotes, /Pickup notes:/)
+  const withNotes = renderReview(dispute, evidence, { ...location, pickup_notes: 'Please collect a straw' })
+  assert.match(withNotes, /<strong>Delivery location:<\/strong> COM2, Level 2, lift lobby/)
+  assert.match(withNotes, /<strong>Pickup notes:<\/strong> Please collect a straw/)
+})
 
 test('missing wallet declines checkout without implying a financial investigation', () => {
   const refused = { ...order, status: 'rejected', credit_status: 'rejected', credit_reason: 'ACCOUNT_NOT_FOUND', disputes: [], is_active: false, review_category: 'history' }

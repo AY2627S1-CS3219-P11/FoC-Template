@@ -1,5 +1,12 @@
 import type { CreateOrderRequest, Order } from './models'
 
+export const buildOrderRequest = (draft: CreateOrderRequest): CreateOrderRequest => ({
+  ...draft,
+  items: draft.items.map((item) => ({ ...item, name: item.name.trim() })),
+  delivery_location: draft.delivery_location.trim(),
+  pickup_notes: draft.pickup_notes?.trim() || null,
+})
+
 type SubmissionAPI = {
   create: (request: CreateOrderRequest, key: string) => Promise<Order>
   update: (id: string, action: 'cancel') => Promise<Order>

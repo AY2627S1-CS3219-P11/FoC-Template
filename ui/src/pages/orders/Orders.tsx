@@ -9,7 +9,7 @@ import { Modal } from '../../components/modal/Modal'
 import { OrderReviews } from './DisputeDetails'
 import styles from './Orders.module.css'
 import { orderNotice, type OrderNotice } from './notifications'
-import { isRetryableSubmissionError, submitWithRetry } from './submission'
+import { buildOrderRequest, isRetryableSubmissionError, submitWithRetry } from './submission'
 import type { CreateOrderRequest } from './models'
 import { canApplyOrderPoll, orderPollingGeneration } from '../../api/orderDemo'
 
@@ -137,7 +137,13 @@ const Orders = () => {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const amount = Number(credits)
-    const draft = { supplier_id: supplierId, items: items.map((item) => ({ ...item, name: item.name.trim() })), pickup_notes: `Delivery location: ${delivery.trim()}${notes.trim() ? `\nPickup notes: ${notes.trim()}` : ''}`, credits: amount }
+    const draft = buildOrderRequest({
+      supplier_id: supplierId,
+      items,
+      delivery_location: delivery,
+      pickup_notes: notes,
+      credits: amount,
+    })
     const payload = creationAttempt?.payload ?? JSON.stringify(draft)
     const request: CreateOrderRequest = JSON.parse(payload)
     const retry = creationAttempt !== null
@@ -325,7 +331,8 @@ const Orders = () => {
         <h3>{order.supplier_snapshot?.name ?? 'Supplier'}</h3>
         <p className={styles.pickup}>{order.supplier_snapshot ? `${order.supplier_snapshot.building} · Floor ${order.supplier_snapshot.floor}` : 'Pickup location unavailable'}</p>
         <ul>{order.items.map((item, index) => <li key={index}>{item.quantity} × {item.name}</li>)}</ul>
-        {order.pickup_notes && <p className={styles.notes}>{order.pickup_notes}</p>}
+        <p className={styles.notes}><strong>Delivery location:</strong> {order.delivery_location}</p>
+        {order.pickup_notes && <p className={styles.notes}><strong>Pickup notes:</strong> {order.pickup_notes}</p>}
         {unaccepted && !expired && <p className={styles.countdown} aria-label="Time remaining before expiry">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')} remaining{order.status === 'init' ? ' · Reserving credits…' : ''}</p>}
         {deadline && <p className={styles.countdown}>{deadline.label} due <time dateTime={deadline.at}>{new Date(deadline.at).toLocaleString()}</time>{Date.parse(deadline.at) <= now ? deadline.settlement ? ' · Settlement delayed; automatic recovery continues' : ' · Overdue; awaiting status update' : ''}</p>}
         <OrderReviews disputes={order.disputes ?? []} className={styles.disputeReason} resolvedClassName={styles.resolvedDispute} />

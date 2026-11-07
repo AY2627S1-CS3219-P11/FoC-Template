@@ -28,6 +28,10 @@ class OrderItem(BaseModel):
 class CreateOrderRequest(BaseModel):
     supplier_id: UUID
     items: list[OrderItem] = Field(min_length=1)
+    delivery_location: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
+    ]
     pickup_notes: str | None = None
     credits: int = Field(ge=1, le=MAX_CREDITS)
 
@@ -100,6 +104,7 @@ class OrderResponse(BaseModel):
     supplier_id: UUID
     supplier_snapshot: SupplierSnapshot | None
     items: list[OrderItem]
+    delivery_location: str
     pickup_notes: str | None
     credits: int
     status: Status

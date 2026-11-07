@@ -12,6 +12,7 @@ export type Order = {
   supplier_id: string
   supplier_snapshot: Supplier | null
   items: OrderItem[]
+  delivery_location: string
   pickup_notes: string | null
   credits: number
   status: OrderStatus
@@ -33,6 +34,7 @@ export type Order = {
 export type CreateOrderRequest = {
   supplier_id: string
   items: OrderItem[]
+  delivery_location: string
   pickup_notes: string | null
   credits: number
 }

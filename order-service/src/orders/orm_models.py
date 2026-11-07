@@ -64,6 +64,8 @@ class ErrandRequest(Base):
 
     supplier_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    delivery_location: Mapped[str] = mapped_column(Text, nullable=False)
+
     pickup_notes: Mapped[str | None] = mapped_column(Text, nullable=True,)
 
     credits: Mapped[int] = mapped_column(BigInteger, nullable=False,)
@@ -119,6 +121,11 @@ class ErrandRequest(Base):
 
     __table_args__ = (
         CheckConstraint("credits >= 1", name="errand_requests_credits_check"),
+        CheckConstraint(
+            "char_length(delivery_location) BETWEEN 1 AND 500 "
+            "AND delivery_location ~ '[^[:space:]]'",
+            name="ck_errand_requests_delivery_location",
+        ),
     )
 
 

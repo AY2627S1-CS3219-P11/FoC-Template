@@ -10,19 +10,64 @@ const source = await readFile(new URL('../src/pages/orders/submission.ts', impor
 await writeFile(join(directory, 'submission.mjs'), ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
 }).outputText)
-const { submitWithRetry, retryDelay } = await import(join(directory, 'submission.mjs'))
+const { buildOrderRequest, submitWithRetry, retryDelay } = await import(join(directory, 'submission.mjs'))
 after(() => rm(directory, { recursive: true, force: true }))
 const order = { id: 'one', status: 'open' }
+const draft = {
+  supplier_id: 'supplier-1',
+  items: [{ name: ' Tea ', quantity: 1 }],
+  delivery_location: '  COM2, Level 2, lift lobby\n',
+  pickup_notes: ' Please collect a straw ',
+  credits: 1,
+}
 const networkError = () => Object.assign(new Error('Response lost'), { status: 0 })
-const options = (api, extra = {}) => ({ api, request: { credits: 1 }, key: 'fixed-key', signal: new AbortController().signal, wantsCancellation: () => false, onRetry: () => {}, wait: async () => {}, ...extra })
+const options = (api, extra = {}) => ({ api, request: { ...draft, delivery_location: 'COM2, Level 2, lift lobby', pickup_notes: null }, key: 'fixed-key', signal: new AbortController().signal, wantsCancellation: () => false, onRetry: () => {}, wait: async () => {}, ...extra })
+
+test('order request separates and trims destination, notes and item names', () => {
+  assert.equal(typeof buildOrderRequest, 'function')
+  assert.deepEqual(buildOrderRequest(draft), {
+    supplier_id: 'supplier-1',
+    items: [{ name: 'Tea', quantity: 1 }],
+    delivery_location: 'COM2, Level 2, lift lobby',
+    pickup_notes: 'Please collect a straw',
+    credits: 1,
+  })
+  assert.equal(draft.items[0].name, ' Tea ')
+})
+
+test('order request sends null for blank or absent pickup notes', () => {
+  assert.equal(typeof buildOrderRequest, 'function')
+  for (const pickup_notes of ['', ' \t\n', null]) {
+    const request = buildOrderRequest({ ...draft, pickup_notes })
+    assert.equal(request.pickup_notes, null)
+    assert.equal(request.delivery_location, 'COM2, Level 2, lift lobby')
+  }
+})
 
 test('lost creation response retries the exact same payload and key', async () => {
   const calls = []
-  const opts = options({ create: async (...args) => { calls.push(args); if (calls.length === 1) throw networkError(); return order } })
+  const editableDraft = structuredClone(draft)
+  const request = buildOrderRequest(editableDraft)
+  const originalPayload = JSON.stringify(request)
+  const opts = options({ create: async (...args) => {
+    calls.push(args)
+    if (calls.length === 1) {
+      editableDraft.delivery_location = 'COM3, entrance'
+      editableDraft.pickup_notes = 'Changed notes'
+      editableDraft.items[0].name = 'Coffee'
+      throw networkError()
+    }
+    return order
+  } }, { request })
   assert.equal((await submitWithRetry(opts)).order.id, 'one')
   assert.equal(calls.length, 2)
   assert.equal(calls[0][0], calls[1][0])
-  assert.equal(calls[1][1], 'fixed-key')
+  for (const [payload, key] of calls) {
+    assert.equal(JSON.stringify(payload), originalPayload)
+    assert.equal(payload.delivery_location, 'COM2, Level 2, lift lobby')
+    assert.equal(payload.pickup_notes, 'Please collect a straw')
+    assert.equal(key, 'fixed-key')
+  }
 })
 test('cancellation intent during a lost response recovers ID then cancels', async () => {
   let cancel = false

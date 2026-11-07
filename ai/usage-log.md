@@ -265,3 +265,45 @@ Added `CreditAuditLog` in [orm_models.py](/Users/weihungloh/FoC-Template/credit-
 Verified PostgreSQL DDL and constraint behavior locally. Only this file changed; nothing committed.
 
 ---
+
+04-11-2026 14:11 | Usage scenario: Investigate backend delivery-location, planned implementation
+
+Prompt: I went through the current code and noticed delivery location is stored inside optional pickup_notes. The UI requires it, but the API allows an order without a destination. I’d like to make delivery location a separate required field so the backend enforces it too.
+
+investgate this, and create a plan as to how we can refactor this to fix the gap.
+
+
+Key responses:
+Identified problem:
+Delivery location is bundled into optional pickup_notes. The UI requires it, but the original API and database allow orders without a destination.
+This means a caller can bypass UI validation and create an order that a courier cannot fulfil.
+
+Created refactor plan:
+- Add a separate required delivery_location, trimmed to 1–500 characters.
+- Enforce it in the API and database.
+- Include it in responses and idempotency checks.
+- Update the UI to send and display it separately.
+- Keep pickup notes optional.
+- Migrate existing data or recreate the database under the repository’s deployment policy.
+
+---
+
+05-11-2026 15:17 | Usage scenario: Implement backend delivery-location refactor
+
+Prompt:
+Make delivery location a separate required backend field, trimmed to 1–500 characters. Update request/response schemas, ORM constraints, order creation and idempotency fingerprints. Keep pickup notes optional and add regression tests.
+
+Key responses:
+Implemented `delivery_location` across validation, persistence, responses and both idempotency lookup paths. Added a non-null text column and named length/nonblank constraint, schema/HTTP tests, and updated database-test fixtures. During implementation, all 28 order-service tests passed against disposable local PostgreSQL; changed-file Ruff checks passed. Changes remain local and uncommitted; UI integration and migration of the existing database are pending.
+
+---
+
+05-11-2026 15:34 | Usage scenario: Implement separate delivery location in the UI
+
+Prompt:
+Add delivery location to request/response types, send it separately from optional pickup notes, display both separately on order cards and admin case review, preserve retry payloads and idempotency keys, run UI tests/lint/build, and log the implementation.
+
+Key responses:
+Added required `delivery_location` types and a request builder that trims destination/items and sends blank notes as null. Updated order cards and admin review with separate labels. Regression checks cover request normalisation, optional-note rendering, and unchanged payload/key across lost-response retries. All 36 UI tests pass; lint passes with one existing audit-log warning; production builds pass, including Docker's Node 22 build. Refreshed the local UI container. Live authenticated checkout was not verified because backend Neon connections time out. Changes remain uncommitted.
+
+---
