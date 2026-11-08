@@ -18,7 +18,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 | Your Name | Your ownership |
 | Your Name | Your ownership |
 | Your Name | Your ownership |
-| Your Name | Your ownership |
+| Kenneth Law | supplier-page/API integration, the end-to-end Keycloak authentication rollout (cancelled), delivery-location refactor across order creation, idempotency, and UI display, and saved-errand template as a nice to save feature: the user can save an order’s reusable details, then later prefill a new editable request that still validates the supplier and reserves credits normally. |
 
 ---
 
