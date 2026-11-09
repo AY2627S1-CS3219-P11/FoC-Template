@@ -317,3 +317,13 @@ Key responses:
 Recommended an Order-owned `saved_errands` template table rather than references to `errand_requests`: templates store reusable, editable fields (name, owner, supplier ID, items, delivery location, optional notes and offered credits), while orders remain immutable historical records. Selecting a template prefills a new editable request; submission creates a fresh order with a new idempotency key and still validates the current supplier and reserves credits through the existing workflow. Templates contain no order status, courier, deadline, reservation or settlement data, and ownership must be enforced server-side.
 
 ---
+
+09-11-2026 | Usage scenario: Add failing saved-errand API contract tests
+
+Prompt:
+Can you write the test? Define the saved-errand contract in tests before implementation: users can create, list, update and delete only their own templates; templates contain reusable request fields; selecting one only prefills a new order.
+
+Key responses:
+Added five API contract tests for `/orders/saved-errands`. The red test run confirms they fail because saved-errand routes are not implemented yet; expected creation/list/selection responses currently return 405, 422 or 404. The ownership tests first require successful creation, preventing absent routes from falsely satisfying access-control expectations.
+
+---
