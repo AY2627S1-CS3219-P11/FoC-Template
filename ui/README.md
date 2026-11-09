@@ -105,10 +105,10 @@ Pausing polling demonstrates stale cancellation: let another user accept, then
 cancel the stale Open card. The server rejects it without releasing credits.
 Actions still reach the server while polling is paused. Reload resets controls.
 
-For a Credit outage demo, initialization expires after `ORDER_INIT_TIMEOUT_SECONDS`
-(default 60). Late reservation success releases credits rather than reopening an
-expired request. Restart Credit before expiry to demonstrate recovery-to-open, or
-increase the timeout and recreate Order Service before creating the request.
+For a Credit outage demo, initialization expires after a fixed 60 seconds.
+Late reservation success releases credits rather than reopening an expired request.
+Restart Credit before expiry to demonstrate recovery-to-open. `TIMEOUT_DURATION`
+controls OPEN, progress and settlement countdowns, not the initialization timeout.
 
 ## Checks
 

@@ -115,20 +115,37 @@ request ID. Repair cannot reopen rejected checkout.
 
 ## Deadlines
 
-| Setting | Default seconds | On timeout |
-| --- | --- | --- |
-| `TIMEOUT_DURATION` | 900 | Fallback for open, progress and settlement deadlines |
-| `ORDER_INIT_TIMEOUT_SECONDS` | 60 | Expire initialization; continue reconciliation |
-| `ORDER_OPEN_TIMEOUT_SECONDS` | 900 | Expire open order and queue release |
-| `ORDER_PROGRESS_TIMEOUT_SECONDS` | 900 | Open fulfilment case, retaining milestone |
-| `ORDER_SETTLEMENT_TIMEOUT_SECONDS` | 900 | Open financial case for pending operation |
+`TIMEOUT_DURATION` is the only configurable order countdown: a positive whole
+number of seconds, defaulting to 900. Initialization is fixed at 60 seconds;
+it is the maximum wait for reservation confirmation, not a mandatory delay.
 
-Values must be positive whole seconds. Stage-specific settings override
-`TIMEOUT_DURATION`. For a short demo, run from the repository root:
+| Stage | Duration | On timeout |
+| --- | --- | --- |
+| INIT | Fixed 60 seconds | Expire initialization; continue reconciliation |
+| OPEN | `TIMEOUT_DURATION` | Expire open order and queue release |
+| Fulfilment progress | `TIMEOUT_DURATION` | Open fulfilment case, retaining milestone |
+| Credit settlement | `TIMEOUT_DURATION` | Open financial case for pending operation |
+
+The former `ORDER_INIT_TIMEOUT_SECONDS`, `ORDER_OPEN_TIMEOUT_SECONDS`,
+`ORDER_PROGRESS_TIMEOUT_SECONDS` and `ORDER_SETTLEMENT_TIMEOUT_SECONDS` settings
+are no longer read. `CREDIT_RESULT_TIMEOUT_SECONDS` remains an independent
+command-replay interval, not an order countdown. Successful reservation handling
+starts a fresh OPEN countdown using the database clock; late success after INIT
+expiry still queues a release rather than reopening the order.
+
+For a short demo, run from the repository root:
 
 ```sh
 TIMEOUT_DURATION=30 docker compose up -d --build --force-recreate order-service
 ```
+
+Root Compose sets `TIMEOUT_DURATION` from the shell or root `.env`, defaulting to
+900; that explicit environment value takes precedence over `order-service/.env`.
+For standalone execution, set it in `order-service/.env` or the process environment.
+All Order instances sharing a database must use the intended setting: any instance
+can handle shared commands/results and persist deadlines using its own duration.
+Credit publishers can also claim shared outbox rows and publish to their own broker.
+This setting alone does not isolate deployments.
 
 Recreate containers to apply environment changes. Existing deadlines remain unchanged
 until a new timed stage begins. The expiry worker sweeps every 10 seconds; transitions

@@ -6,16 +6,17 @@ from common.config_manager import settings
 
 
 def init_window() -> timedelta:
-    return timedelta(seconds=settings.order_init_timeout_seconds)
+    # Initialization is a short technical timeout, not the order countdown.
+    return timedelta(seconds=60)
 
 
 def settlement_window() -> timedelta:
-    return timedelta(seconds=settings.order_settlement_timeout_seconds)
+    return timedelta(seconds=settings.timeout_duration)
 
 
 def open_window() -> timedelta:
-    return timedelta(seconds=settings.order_open_timeout_seconds)
+    return timedelta(seconds=settings.timeout_duration)
 
 
 def progress_window() -> timedelta:
-    return timedelta(seconds=settings.order_progress_timeout_seconds)
+    return timedelta(seconds=settings.timeout_duration)

@@ -5,13 +5,21 @@ import os
 import unittest
 from datetime import timedelta
 from typing import TypedDict
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from sqlalchemy import event, func, select, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from orders import administration, creation, credit_results, disputes, repository
+from orders import (
+    administration,
+    creation,
+    credit_results,
+    deadlines,
+    disputes,
+    repository,
+)
 from orders.models import (
     CreditOperation,
     CreditOperationOutcome,
@@ -83,6 +91,24 @@ class OrderDatabaseTests(unittest.IsolatedAsyncioTestCase):
             request_id=command.id, order_id=order_id, operation=CreditOperation.RESERVE,
             outcome=CreditOperationOutcome.SUCCEEDED))
         await session.commit()
+
+    async def test_persisted_deadlines_use_fixed_init_and_shared_countdown(self):
+        for seconds in (900, 30):
+            with self.subTest(seconds=seconds), patch.object(deadlines.settings, "timeout_duration", seconds):
+                order = await self.create()
+                self.assertEqual(order.expires_at - order.created_at, timedelta(seconds=60))
+                async with self.sessions() as session:
+                    await self.confirm_reserve(session, order.id)
+                    stored = await repository.get_order_by_id(session, order.id)
+                    self.assertEqual(stored.status, Status.OPEN)
+                    self.assertEqual(stored.expires_at - stored.updated_at, timedelta(seconds=seconds))
+                    original_deadline = stored.expires_at
+                    # Replayed success must not reset a persisted OPEN deadline.
+                    await self.confirm_reserve(session, order.id)
+                    await session.refresh(stored)
+                    self.assertEqual(stored.expires_at, original_deadline)
+                # Each duration needs a fresh creation key/order.
+                self.requester = uuid4()
 
     async def test_concurrent_retries_reserve_only_once(self):
         orders = await asyncio.wait_for(asyncio.gather(*(self.create() for _ in range(8))), 20)
