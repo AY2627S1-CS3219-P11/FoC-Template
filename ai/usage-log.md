@@ -307,3 +307,13 @@ Key responses:
 Added required `delivery_location` types and a request builder that trims destination/items and sends blank notes as null. Updated order cards and admin review with separate labels. Regression checks cover request normalisation, optional-note rendering, and unchanged payload/key across lost-response retries. All 36 UI tests pass; lint passes with one existing audit-log warning; production builds pass, including Docker's Node 22 build. Refreshed the local UI container. Live authenticated checkout was not verified because backend Neon connections time out. Changes remain uncommitted.
 
 ---
+
+05-11-2026 | Usage scenario: Plan saved errand templates N2H
+
+Prompt:
+Review the current errand workflow and propose a concise design for a repeat-errand N2H, including whether saved errands should reference historical orders or have their own table.
+
+Key responses:
+Recommended an Order-owned `saved_errands` template table rather than references to `errand_requests`: templates store reusable, editable fields (name, owner, supplier ID, items, delivery location, optional notes and offered credits), while orders remain immutable historical records. Selecting a template prefills a new editable request; submission creates a fresh order with a new idempotency key and still validates the current supplier and reserves credits through the existing workflow. Templates contain no order status, courier, deadline, reservation or settlement data, and ownership must be enforced server-side.
+
+---
