@@ -17,9 +17,11 @@ from orders.orm_models import (
     CreditStatus,
     ErrandRequest,
     OrderAuditLog,
+    SavedErrand,
     Status,
 )
 from orders.policy import can_report_problem, participant_actions
+from orders.schemas import CreateSavedErrandRequest, UpdateSavedErrandRequest
 
 
 async def find_pending_credit_command(session: AsyncSession, result_timeout_seconds: int) -> CreditCommandOutbox | None:
@@ -41,6 +43,77 @@ async def get_open_orders(session: AsyncSession) -> list[ErrandRequest]:
 
 async def get_order_by_id(session: AsyncSession, order_id: UUID) -> ErrandRequest | None:
     return await session.get(ErrandRequest, order_id)
+
+
+async def create_saved_errand(
+    session: AsyncSession, owner_id: UUID, payload: CreateSavedErrandRequest,
+) -> SavedErrand:
+    saved_errand = SavedErrand(
+        owner_id=owner_id,
+        name=payload.name,
+        supplier_id=payload.supplier_id,
+        items=[item.model_dump(mode="json") for item in payload.items],
+        delivery_location=payload.delivery_location,
+        pickup_notes=payload.pickup_notes,
+        credits=payload.credits,
+    )
+    session.add(saved_errand)
+    await session.commit()
+    await session.refresh(saved_errand)
+    return saved_errand
+
+
+async def list_saved_errands(session: AsyncSession, owner_id: UUID) -> list[SavedErrand]:
+    return list(await session.scalars(select(SavedErrand).where(
+        SavedErrand.owner_id == owner_id,
+    ).order_by(SavedErrand.updated_at.desc(), SavedErrand.id)))
+
+
+async def get_saved_errand(
+    session: AsyncSession, saved_errand_id: UUID, owner_id: UUID,
+) -> SavedErrand | None:
+    return await session.scalar(select(SavedErrand).where(
+        SavedErrand.id == saved_errand_id,
+        SavedErrand.owner_id == owner_id,
+    ))
+
+
+async def update_saved_errand(
+    session: AsyncSession,
+    saved_errand_id: UUID,
+    owner_id: UUID,
+    payload: UpdateSavedErrandRequest,
+) -> SavedErrand | None:
+    saved_errand = await session.scalar(select(SavedErrand).where(
+        SavedErrand.id == saved_errand_id,
+        SavedErrand.owner_id == owner_id,
+    ).with_for_update())
+    if saved_errand is None:
+        return None
+
+    changes = payload.model_dump(exclude_unset=True)
+    if "items" in changes:
+        changes["items"] = [item.model_dump(mode="json") for item in payload.items or []]
+    for field, value in changes.items():
+        setattr(saved_errand, field, value)
+    saved_errand.updated_at = func.clock_timestamp()
+    await session.commit()
+    await session.refresh(saved_errand)
+    return saved_errand
+
+
+async def delete_saved_errand(
+    session: AsyncSession, saved_errand_id: UUID, owner_id: UUID,
+) -> bool:
+    saved_errand = await session.scalar(select(SavedErrand).where(
+        SavedErrand.id == saved_errand_id,
+        SavedErrand.owner_id == owner_id,
+    ).with_for_update())
+    if saved_errand is None:
+        return False
+    await session.delete(saved_errand)
+    await session.commit()
+    return True
 
 
 async def get_requested_orders(session: AsyncSession, requester_id: UUID) -> list[ErrandRequest]:

@@ -5,7 +5,7 @@ We use ECS Fargate + managed database (Neon) + managed broker (AmazonMQ)
 
 ### Secret management
 
-Secrets are delivered via .env files that are kept outside of Git always. 
+Secrets are delivered via .env files that are kept outside of Git always.
 
 ### How our deployment differs from prod
 

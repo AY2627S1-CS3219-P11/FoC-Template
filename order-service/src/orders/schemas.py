@@ -2,7 +2,14 @@ from datetime import datetime, time
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    computed_field,
+    field_validator,
+)
 
 from orders.models import (
     CaseAction,
@@ -15,6 +22,14 @@ from orders.orm_models import CreditStatus, Status
 from orders.policy import ParticipantAction, ReviewCategory
 
 MAX_CREDITS = 9_223_372_036_854_775_807
+TemplateName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=100),
+]
+DeliveryLocation = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
+]
 
 
 class OrderItem(BaseModel):
@@ -28,12 +43,60 @@ class OrderItem(BaseModel):
 class CreateOrderRequest(BaseModel):
     supplier_id: UUID
     items: list[OrderItem] = Field(min_length=1)
-    delivery_location: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1, max_length=500),
-    ]
+    delivery_location: DeliveryLocation
     pickup_notes: str | None = None
     credits: int = Field(ge=1, le=MAX_CREDITS)
+
+
+class CreateSavedErrandRequest(BaseModel):
+    name: TemplateName
+    supplier_id: UUID
+    items: list[OrderItem] = Field(min_length=1)
+    delivery_location: DeliveryLocation
+    pickup_notes: str | None = None
+    credits: int = Field(ge=1, le=MAX_CREDITS)
+
+
+class UpdateSavedErrandRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: TemplateName | None = None
+    supplier_id: UUID | None = None
+    items: list[OrderItem] | None = Field(default=None, min_length=1)
+    delivery_location: DeliveryLocation | None = None
+    pickup_notes: str | None = None
+    credits: int | None = Field(default=None, ge=1, le=MAX_CREDITS)
+
+    @field_validator("name", "supplier_id", "items", "delivery_location", "credits", mode="before")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        if value is None:
+            raise ValueError("Field must not be null")
+        return value
+
+
+class SavedErrandResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    name: str
+    supplier_id: UUID
+    items: list[OrderItem]
+    delivery_location: str
+    pickup_notes: str | None
+    credits: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SavedErrandDraft(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    supplier_id: UUID
+    items: list[OrderItem]
+    delivery_location: str
+    pickup_notes: str | None
+    credits: int
 
 
 class DisputeOrderRequest(BaseModel):

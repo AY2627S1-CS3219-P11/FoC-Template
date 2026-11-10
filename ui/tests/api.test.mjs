@@ -1,10 +1,12 @@
 import { after, afterEach, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import ts from 'typescript'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 
 // Compile the API modules in isolation; no browser or additional test dependencies needed.
 const directory = await mkdtemp(join(tmpdir(), 'campus-api-test-'))
@@ -18,6 +20,19 @@ for (const [source, target] of [['src/api/api.ts', 'api'], ['src/api/models.ts',
     compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
   }).outputText)
 }
+await symlink(new URL('../node_modules', import.meta.url), join(directory, 'node_modules'), 'dir')
+for (const name of ['endpointConfig', 'useCampusErrandsAPI']) {
+  const source = (await readFile(new URL(`../src/api/${name}.ts`, import.meta.url), 'utf8'))
+    .replaceAll("'./api'", "'./api.mjs'")
+    .replaceAll("'./endpointConfig'", "'./endpointConfig.mjs'")
+  await writeFile(join(directory, `${name}.mjs`), ts.transpileModule(source, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
+  }).outputText)
+}
+const { useCampusErrandsAPI } = await import(pathToFileURL(join(directory, 'useCampusErrandsAPI.mjs')).href)
+let client
+function CaptureClient({ capture }) { capture(useCampusErrandsAPI()); return null }
+renderToStaticMarkup(createElement(CaptureClient, { capture: (value) => { client = value } }))
 const { makeCampusErrandsAPIRequest: request, makeAuthenticatedCampusErrandsAPIRequest: authenticatedRequest } = await import(pathToFileURL(join(directory, 'api.mjs')).href)
 const { CampusErrandsAPIError } = await import(pathToFileURL(join(directory, 'models.mjs')).href)
 const config = { service: 'user', url: '/signin', verb: 'POST' }
@@ -71,4 +86,26 @@ test('outages do not trigger unauthenticated handler', async () => {
   let unauthenticated = false
   await assert.rejects(authenticatedRequest(null, config, { onUnauthenticated: () => { unauthenticated = true } }), { status: 503 })
   assert.equal(unauthenticated, false)
+})
+
+
+test('saved-template client sends CRUD to template routes, excluding path IDs from bodies', async () => {
+  const calls = []
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url, method: init.method, body: init.body ? JSON.parse(init.body) : null, credentials: init.credentials })
+    return init.method === 'DELETE' ? new Response(null, { status: 204 }) : Response.json({ id: 'saved-1' })
+  }
+  const payload = { name: 'Tea', supplier_id: 'supplier-1', items: [{ name: 'Tea', quantity: 1 }], delivery_location: 'COM2', pickup_notes: null, credits: 8 }
+  await client.savedErrands.create(payload)
+  await client.savedErrands.list()
+  await client.savedErrands.draft('saved-1')
+  await client.savedErrands.update('saved-1', { name: 'Renamed', pickup_notes: null })
+  await client.savedErrands.remove('saved-1')
+  assert.deepEqual(calls, [
+    { url: '/order-api/orders/saved-errands', method: 'POST', body: payload, credentials: 'include' },
+    { url: '/order-api/orders/saved-errands', method: 'GET', body: null, credentials: 'include' },
+    { url: '/order-api/orders/saved-errands/saved-1', method: 'GET', body: null, credentials: 'include' },
+    { url: '/order-api/orders/saved-errands/saved-1', method: 'PATCH', body: { name: 'Renamed', pickup_notes: null }, credentials: 'include' },
+    { url: '/order-api/orders/saved-errands/saved-1', method: 'DELETE', body: null, credentials: 'include' },
+  ])
 })

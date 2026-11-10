@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 import type { CreateOrderRequest, Order } from './models'
 
 export const buildOrderRequest = (draft: CreateOrderRequest): CreateOrderRequest => ({
@@ -5,6 +6,19 @@ export const buildOrderRequest = (draft: CreateOrderRequest): CreateOrderRequest
   items: draft.items.map((item) => ({ ...item, name: item.name.trim() })),
   delivery_location: draft.delivery_location.trim(),
   pickup_notes: draft.pickup_notes?.trim() || null,
+})
+
+/** Whitelist reusable inputs so template metadata never enters order creation. */
+export const templateDraft = (template: CreateOrderRequest): CreateOrderRequest => buildOrderRequest({
+  supplier_id: template.supplier_id,
+  items: template.items.map((item) => ({ name: item.name, quantity: item.quantity })),
+  delivery_location: template.delivery_location,
+  pickup_notes: template.pickup_notes,
+  credits: template.credits,
+})
+
+export const newCreationAttempt = (request: CreateOrderRequest) => ({
+  payload: JSON.stringify(request), key: uuidv4(),
 })
 
 type SubmissionAPI = {

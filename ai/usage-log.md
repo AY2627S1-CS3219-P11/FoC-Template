@@ -244,7 +244,7 @@ Key responses:
 - Suggested organizing database access and API files consistently with the existing User Service.
 - Assisted with PostgreSQL enum definitions and database integration.
 
-Key changes: 
+Key changes:
 
 - Added the SQLAlchemy ORM model for errand_requests, including order identifiers, participant IDs, credits, status, and lifecycle timestamps.
 - Configured PostgreSQL enum mapping for order statuses.
@@ -449,3 +449,55 @@ Key responses:
 Added required `delivery_location` types and a request builder that trims destination/items and sends blank notes as null. Updated order cards and admin review with separate labels. Regression checks cover request normalisation, optional-note rendering, and unchanged payload/key across lost-response retries. All 36 UI tests pass; lint passes with one existing audit-log warning; production builds pass, including Docker's Node 22 build. Refreshed the local UI container. Live authenticated checkout was not verified because backend Neon connections time out. Changes remain uncommitted.
 
 ---
+
+05-11-2026 | Usage scenario: Plan saved errand templates N2H
+
+Prompt:
+Review the current errand workflow and propose a concise design for a repeat-errand N2H, including whether saved errands should reference historical orders or have their own table.
+
+Key responses:
+Recommended an Order-owned `saved_errands` template table rather than references to `errand_requests`: templates store reusable, editable fields (name, owner, supplier ID, items, delivery location, optional notes and offered credits), while orders remain immutable historical records. Selecting a template prefills a new editable request; submission creates a fresh order with a new idempotency key and still validates the current supplier and reserves credits through the existing workflow. Templates contain no order status, courier, deadline, reservation or settlement data, and ownership must be enforced server-side.
+
+---
+
+09-11-2026 | Usage scenario: Add failing saved-errand API contract tests
+
+Prompt:
+Can you write the test? Define the saved-errand contract in tests before implementation: users can create, list, update and delete only their own templates; templates contain reusable request fields; selecting one only prefills a new order.
+
+Key responses:
+Added five API contract tests for `/orders/saved-errands`. The red test run confirms they fail because saved-errand routes are not implemented yet; expected creation/list/selection responses currently return 405, 422 or 404. The ownership tests first require successful creation, preventing absent routes from falsely satisfying access-control expectations.
+
+---
+
+09-11-2026 | Usage scenario: Implement saved-errand backend
+
+Prompt:
+Add a `SavedErrand` ORM model to Order Service, create schemas for create/update/response/draft, add owner-scoped repository functions and `/orders/saved-errands` CRUD routes, then run the five tests until they pass.
+
+Key responses:
+Implemented the saved-errand template backend in Order Service: an owner-indexed `saved_errands` model; create, partial-update, response and draft schemas; owner-scoped repository operations; and CRUD routes at `/orders/saved-errands`. Selecting a template returns only editable new-order fields, never lifecycle, reservation or deadline data. The five contract tests and changed-file Ruff checks pass; no UI or deployment changes were made.
+
+---
+
+10-11-2026 | Usage scenario: Complete saved-errand UI and PATCH validation
+
+Prompt:
+Implement explicit-null rejection for required saved-errand PATCH fields while allowing omissions and clearing pickup notes. Add Save as template with a name, a personal template list with use/edit/rename/delete, editable prefilling, fresh order idempotency keys with stable retries, separate template/order feedback, and log AI usage.
+
+Key responses:
+Codex added a PATCH field validator and HTTP regression tests: explicitly supplied null is rejected for name, supplier, items, destination and credits; omitted fields remain unchanged and pickup_notes can be cleared. Added typed saved-errand API bindings and an Orders-page template list with refresh/error states, editable prefilling, template saving, edit/rename and confirmed deletion. Template saving is a separate action from order submission and reports its outcome independently; it does not reserve credits. Existing order creation still handles current supplier validation, credit reservation and idempotent retries. Template selection and saving cannot replace an uncertain order attempt. Review also identified and fixed stale list responses restoring deleted cards and New request reopening the previous template's edit mode.
+
+---
+
+
+10-11-2026 | Usage scenario: Resolve saved-template branch conflicts with latest main
+
+Prompt:
+Merge the changed main version into the saved-errand feature branch, make sure it is current, resolve conflicts, and leave the commit to the user.
+
+Key responses:
+Fetched Team P11 origin/main at f025c35 and merged it locally without committing. Combined incoming team contributions with Kenneth's README entry. Retained saved-template order creation and moved main's uuidv4 generation into newCreationAttempt so retries keep their existing payload/key and new requests work without crypto.randomUUID. Added a regression test for that environment and updated isolated test module resolution for uuid. Preserved the user's pre-existing .gitignore edits outside the staged merge.
+
+Verification:
+40 UI tests passed; 23 Order Service tests passed with 14 database tests skipped. Node 22 production build passed and UI lint passed with the existing audit-log warning. An incoming deployment test fails on macOS because deploy/aws-env.sh uses chmod 700 --; this file was preserved from main. Changes are staged for the user's merge commit; nothing was committed or pushed by Codex.

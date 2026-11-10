@@ -9,10 +9,11 @@ import { Modal } from '../../components/modal/Modal'
 import { OrderReviews } from './DisputeDetails'
 import styles from './Orders.module.css'
 import { orderNotice, type OrderNotice } from './notifications'
-import { buildOrderRequest, isRetryableSubmissionError, submitWithRetry } from './submission'
+import { buildOrderRequest, isRetryableSubmissionError, submitWithRetry, templateDraft, newCreationAttempt } from './submission'
 import type { CreateOrderRequest } from './models'
+import { SavedErrands } from './SavedErrands'
+import type { SavedErrand } from './models'
 import { canApplyOrderPoll, orderPollingGeneration } from '../../api/orderDemo'
-import { v4 as uuidv4 } from 'uuid'
 
 type View = 'open' | 'requested' | 'assigned'
 type Resource = View | 'credits' | 'suppliers'
@@ -42,6 +43,10 @@ const Orders = () => {
   const [delivery, setDelivery] = useState('')
   const [notes, setNotes] = useState('')
   const [credits, setCredits] = useState('1')
+  const [templateName, setTemplateName] = useState('')
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null)
+  const [templateMessage, setTemplateMessage] = useState('')
+  const [templateRevision, setTemplateRevision] = useState(0)
   const [busy, setBusy] = useState<string | null>(null)
   const [reportOrder, setReportOrder] = useState<Order | null>(null)
   const [reason, setReason] = useState('')
@@ -133,6 +138,46 @@ const Orders = () => {
     return () => { window.clearTimeout(initialLoad); window.clearInterval(poll); window.clearInterval(clock) }
   }, [refresh])
 
+  const selectTemplate = async (template: SavedErrand, edit: boolean) => {
+    if (mutationLock.current || creationAttempt) return
+    mutationLock.current = true
+    setBusy('template-load')
+    try {
+      const draft = templateDraft(await api.savedErrands.draft(template.id))
+      setSupplierId(draft.supplier_id); setItems(draft.items)
+      setDelivery(draft.delivery_location); setNotes(draft.pickup_notes ?? ''); setCredits(String(draft.credits))
+      setTemplateName(template.name); setEditingTemplate(edit ? template.id : null)
+      setTemplateMessage(edit ? 'Editing this saved template. Save changes to update it.' : 'Template loaded. Review the details before submitting a new request.')
+      setSubmissionMessage('')
+      setFormOpen(true)
+    } catch (error) { showErrorToast(`Template could not be loaded. ${errorMessage(error)}`) }
+    finally { mutationLock.current = false; setBusy(null) }
+  }
+
+  const saveTemplate = async () => {
+    if (mutationLock.current || creationAttempt) return
+    const draft = templateDraft({ supplier_id: supplierId, items, delivery_location: delivery, pickup_notes: notes, credits: Number(credits) })
+    const name = templateName.trim()
+    if (!name || name.length > 100 || !draft.supplier_id || !draft.delivery_location || draft.delivery_location.length > 500 || !draft.items.length || draft.items.some((item) => !item.name || item.name.length > 200 || !Number.isSafeInteger(item.quantity) || item.quantity < 1) || !Number.isSafeInteger(draft.credits) || draft.credits < 1) {
+      setTemplateMessage('Template not saved. Enter a name, supplier, destination, items and positive whole credits.')
+      return
+    }
+    mutationLock.current = true
+    setBusy('template-save')
+    setTemplateMessage('Saving template…')
+    try {
+      const payload = { ...draft, name }
+      const saved = editingTemplate ? await api.savedErrands.update(editingTemplate, payload) : await api.savedErrands.create(payload)
+      setEditingTemplate(saved.id)
+      setTemplateName(saved.name)
+      setTemplateRevision((value) => value + 1)
+      setTemplateMessage('Template saved. No order was submitted and no credits were reserved.')
+      showSuccessToast('Template saved.')
+    } catch (error) {
+      setTemplateMessage(`Template save was not confirmed. ${errorMessage(error)} Refresh templates before trying again if the connection was lost. Order submission is separate.`)
+    } finally { mutationLock.current = false; setBusy(null) }
+  }
+
   const checkedBalance = resources.credits.loaded && !resources.credits.error ? balance : null
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -159,7 +204,7 @@ const Orders = () => {
     submissionController.current = controller
     setSubmissionMessage(cancellationIntent.current ? 'Recovering the request to confirm cancellation…' : 'Submitting request…')
     try {
-      const attempt = creationAttempt ?? { payload, key: uuidv4() }
+      const attempt = creationAttempt ?? newCreationAttempt(request)
       setCreationAttempt(attempt)
       const { order: created, cancellationUnavailable } = await submitWithRetry({
         api: api.order, request, key: attempt.key, signal: controller.signal,
@@ -176,6 +221,7 @@ const Orders = () => {
       setSubmissionMessage('')
       setFormOpen(false)
       setItems([{ name: '', quantity: 1 }]); setDelivery(''); setNotes(''); setCredits('1')
+      setEditingTemplate(null); setTemplateName(''); setTemplateMessage('')
       setView('requested')
       if (cancellationUnavailable) showErrorToast(`Cancellation could not be completed: the request is ${statusLabels[created.status].toLowerCase()}. Check My requests.`)
       else showSuccessToast(cancellationIntent.current ? 'Request cancelled. Any reserved credits will be released.' : 'Request submitted. It becomes available once credits are reserved.')
@@ -241,7 +287,7 @@ const Orders = () => {
   return <main className={styles.page}>
     <header className={styles.heading}>
       <div><p className={styles.eyebrow}>A little help goes a long way</p><h1>Orders</h1><p>Ask for a pickup. Help along your route. You can do both, anytime.</p></div>
-      <button className={styles.primary} onClick={() => setFormOpen(true)} aria-haspopup="dialog" aria-controls="new-request">+ New request</button>
+      <button className={styles.primary} onClick={() => { if (!creationAttempt) { setEditingTemplate(null); setTemplateName(''); setTemplateMessage('') } setFormOpen(true) }} disabled={busy !== null} aria-haspopup="dialog" aria-controls="new-request">+ New request</button>
     </header>
     <section className={styles.wallet} aria-label="Credit balance">
       <div><span>Available credits</span><strong>{resources.credits.error ? '—' : balance?.available_credits ?? '—'}</strong></div>
@@ -251,8 +297,9 @@ const Orders = () => {
         : !resources.credits.loaded ? <p role="status">Loading your credit balance…</p>
         : <p>Credits are reserved for your requests, returned on cancellation or expiry, and awarded to the courier after you confirm receipt.</p>}
     </section>
-    {formOpen && <Modal id="new-request" labelledBy="request-title" onClose={() => setFormOpen(false)} busy={busy === 'create'}><section className={styles.formPanel}>
-      <div className={styles.formHeading}><h2 id="request-title">What do you need picked up?</h2><button type="button" disabled={busy === 'create'} onClick={() => setFormOpen(false)}>Close</button></div>
+    <SavedErrands revision={templateRevision} disabled={busy !== null || creationAttempt !== null} onSelect={(template, edit) => void selectTemplate(template, edit)} />
+    {formOpen && <Modal id="new-request" labelledBy="request-title" onClose={() => setFormOpen(false)} busy={busy !== null}><section className={styles.formPanel}>
+      <div className={styles.formHeading}><h2 id="request-title">{editingTemplate ? 'Edit saved template' : 'What do you need picked up?'}</h2><button type="button" disabled={busy !== null} onClick={() => setFormOpen(false)}>Close</button></div>
       <p>Only active suppliers are available. Open requests expire after 15 minutes.</p>
       {resources.suppliers.error && <div className={styles.notice} role="status"><strong>Suppliers are temporarily unavailable</strong><p>Your draft is safe. Please try again before submitting a new request.</p><button onClick={() => void refresh()}>Try again</button></div>}
       {resources.credits.error && <div className={styles.notice} role="status"><p>Unable to check your credit limit right now. You can still submit, but you may not have enough credits. Your request will only open if enough credits can be reserved.</p><button onClick={() => void refresh()}>Retry balance</button></div>}
@@ -261,10 +308,11 @@ const Orders = () => {
       {!resources.credits.loaded && !resources.credits.error && <p role="status">Unable to check your credit limit yet. You can still submit, but you may not have enough credits.</p>}
       {!resources.suppliers.loaded && !resources.suppliers.error && <p role="status">Loading suppliers…</p>}
       {resources.suppliers.loaded && !resources.suppliers.error && suppliers.length === 0 && <p role="status">No active suppliers are available right now.</p>}
+      {supplierId && resources.suppliers.loaded && !resources.suppliers.error && !suppliers.some((supplier) => supplier.id === supplierId) && <p role="alert">This template’s supplier is no longer active. Choose an active supplier before submitting.</p>}
       <form ref={submissionForm} onSubmit={(event) => void submit(event)}>
-        <fieldset disabled={creationAttempt !== null}>
+        <fieldset disabled={creationAttempt !== null || busy !== null}>
         <div className={styles.formGrid}>
-          <label>Supplier<select required disabled={resources.suppliers.error || !resources.suppliers.loaded} value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Choose an active supplier</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.building}, floor {supplier.floor}</option>)}</select></label>
+          <label>Supplier<select required disabled={resources.suppliers.error || !resources.suppliers.loaded} value={supplierId} onChange={(event) => setSupplierId(event.target.value)}><option value="">Choose an active supplier</option>{supplierId && !suppliers.some((supplier) => supplier.id === supplierId) && <option value={supplierId}>Saved supplier unavailable — choose another</option>}{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name} · {supplier.building}, floor {supplier.floor}</option>)}</select></label>
           <label>Delivery location<input required maxLength={500} value={delivery} onChange={(event) => setDelivery(event.target.value)} placeholder="Building, floor and meeting point" /></label>
         </div>
         <fieldset><legend>Items for pickup</legend>{items.map((item, index) => <div className={styles.itemRow} key={index}>
@@ -277,7 +325,14 @@ const Orders = () => {
           <label>Credits to award<input required type="number" min="1" step="1" max={creationAttempt ? undefined : checkedBalance?.available_credits} value={credits} onChange={(event) => setCredits(event.target.value)} /><small>At least 1 whole credit. Available: {resources.credits.error ? 'unavailable' : balance?.available_credits ?? 'loading…'}.</small></label>
         </div>
         </fieldset>
-        <button className={styles.primary} disabled={busy !== null || (!creationAttempt && checkedBalance !== null && checkedBalance.available_credits < 1) || creationUnavailable} type="submit">{busy === 'create' ? (cancellationRequested ? 'Cancelling…' : 'Submitting…') : creationAttempt ? (cancellationRequested ? 'Retry cancellation' : 'Retry same request') : 'Submit request'}</button>
+        <section className={styles.templateSave} aria-label="Save reusable template">
+          <label>Template name<input maxLength={100} value={templateName} disabled={busy !== null || creationAttempt !== null} onChange={(event) => setTemplateName(event.target.value)} placeholder="e.g. My usual tea" /></label>
+          <button type="button" disabled={busy !== null || creationAttempt !== null} onClick={() => void saveTemplate()}>{busy === 'template-save' ? 'Saving template…' : editingTemplate ? 'Save template changes' : 'Save as template'}</button>
+          {editingTemplate && <button type="button" disabled={busy !== null || creationAttempt !== null} onClick={() => { setEditingTemplate(null); setTemplateMessage('The next save will create a separate template.') }}>Save as a new template instead</button>}
+          <p>Saving keeps reusable details only. Submit separately to create an order and reserve credits.</p>
+          {templateMessage && <p role="status">{templateMessage}</p>}
+        </section>
+        <button className={styles.primary} disabled={busy !== null || (!creationAttempt && checkedBalance !== null && checkedBalance.available_credits < 1) || creationUnavailable || (!creationAttempt && !suppliers.some((supplier) => supplier.id === supplierId))} type="submit">{busy === 'create' ? (cancellationRequested ? 'Cancelling…' : 'Submitting…') : creationAttempt ? (cancellationRequested ? 'Retry cancellation' : 'Retry same request') : 'Submit request'}</button>
         {creationAttempt && !cancellationRequested && <button type="button" onClick={requestCancellation}>Cancel request</button>}
       </form>
     </section></Modal>}

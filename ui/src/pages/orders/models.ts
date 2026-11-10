@@ -80,3 +80,6 @@ export const matchesOpenFilters = (order: Order, now: number, location: string, 
   const pickup = `${order.supplier_snapshot?.name ?? ''} ${order.supplier_snapshot?.building ?? ''}`.toLowerCase()
   return order.status === 'open' && remainingSeconds(order, now) > 0 && pickup.includes(location.trim().toLowerCase()) && (!minCredits || order.credits >= Number(minCredits)) && (!maxCredits || order.credits <= Number(maxCredits))
 }
+
+export type SavedErrandRequest = CreateOrderRequest & { name: string }
+export type SavedErrand = SavedErrandRequest & { id: string; created_at: string; updated_at: string }
