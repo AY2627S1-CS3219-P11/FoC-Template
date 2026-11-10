@@ -1,3 +1,7 @@
+# AI assistance disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol), date: 2026-10-16
+# Scope: Assisted with mapping the existing errand_requests database schema to SQLAlchemy models and PostgreSQL enums
+# Author review: I reviewed correctness and edited the changes to fit the project
 from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4

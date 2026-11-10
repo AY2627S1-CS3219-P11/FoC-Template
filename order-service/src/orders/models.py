@@ -1,3 +1,8 @@
+# AI assistance disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol), date: 2026-10-17
+# Scope: Assisted with implementing credit command and result payload models compatible with Credit Service
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from enum import StrEnum
 from typing import ClassVar, Literal, Self
 from uuid import UUID

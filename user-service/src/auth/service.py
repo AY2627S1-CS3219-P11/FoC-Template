@@ -1,4 +1,8 @@
 # AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6 Medium), date: 2026-09-18
+# Scope: Assisted with passing database sessions through authentication service functions and correcting result handling
+# Author review: I reviewed correctness and edited the changes to fit the project
+#
 # Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
 # Scope: Passed the selected role and search query to managed-user retrieval
 # Author review: I reviewed correctness and edited the changes to fit the project

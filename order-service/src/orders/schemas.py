@@ -1,3 +1,8 @@
+# AI assistance disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol), date: 2026-10-16
+# Scope: Assisted with implementing Order request and response validation model
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from datetime import datetime, time
 from typing import Annotated, Literal
 from uuid import UUID

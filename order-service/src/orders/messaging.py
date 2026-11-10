@@ -1,3 +1,8 @@
+# AI assistance disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol), date: 2026-10-17
+# Scope: Assisted with RabbitMQ exchange and result-queue setup and consumer initialization
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager

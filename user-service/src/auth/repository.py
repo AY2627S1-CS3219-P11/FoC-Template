@@ -1,4 +1,8 @@
 # AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6 Medium), date: 2026-09-18
+# Scope: Assisted with converting existing SQL database operations to asynchronous SQLAlchemy queries and session handling
+# Author review: I reviewed correctness and edited the changes to fit the project
+#
 # Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
 # Scope: Implemented role-filtered user listing and partial username/email search
 # Author review: I reviewed correctness and edited the changes to fit the project

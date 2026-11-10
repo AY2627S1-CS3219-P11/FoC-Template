@@ -1,4 +1,8 @@
 # AI Assistance Disclosure:
+# Tool: ChatGPT (model: GPT-6 Medium), date: 2026-09-18
+# Scope: Assisted with database-session dependency injection and troubleshooting missing session arguments
+# Author review: I reviewed correctness and edited the changes to fit the project
+#
 # Tool: ChatGPT (model: GPT-5.6 Sol High), date: 2026-09-21
 # Scope: Added role and query parameters to the managed-user listing endpoint
 # Author review: I reviewed correctness and edited the changes to fit the project
