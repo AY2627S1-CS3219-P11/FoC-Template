@@ -2,7 +2,14 @@ from datetime import datetime, time
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, computed_field
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    computed_field,
+    field_validator,
+)
 
 from orders.models import (
     CaseAction,
@@ -59,6 +66,13 @@ class UpdateSavedErrandRequest(BaseModel):
     delivery_location: DeliveryLocation | None = None
     pickup_notes: str | None = None
     credits: int | None = Field(default=None, ge=1, le=MAX_CREDITS)
+
+    @field_validator("name", "supplier_id", "items", "delivery_location", "credits", mode="before")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        if value is None:
+            raise ValueError("Field must not be null")
+        return value
 
 
 class SavedErrandResponse(BaseModel):

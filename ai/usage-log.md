@@ -337,3 +337,13 @@ Key responses:
 Implemented the saved-errand template backend in Order Service: an owner-indexed `saved_errands` model; create, partial-update, response and draft schemas; owner-scoped repository operations; and CRUD routes at `/orders/saved-errands`. Selecting a template returns only editable new-order fields, never lifecycle, reservation or deadline data. The five contract tests and changed-file Ruff checks pass; no UI or deployment changes were made.
 
 ---
+
+10-11-2026 | Usage scenario: Complete saved-errand UI and PATCH validation
+
+Prompt:
+Implement explicit-null rejection for required saved-errand PATCH fields while allowing omissions and clearing pickup notes. Add Save as template with a name, a personal template list with use/edit/rename/delete, editable prefilling, fresh order idempotency keys with stable retries, separate template/order feedback, and log AI usage.
+
+Key responses:
+Codex added a PATCH field validator and HTTP regression tests: explicitly supplied null is rejected for name, supplier, items, destination and credits; omitted fields remain unchanged and pickup_notes can be cleared. Added typed saved-errand API bindings and an Orders-page template list with refresh/error states, editable prefilling, template saving, edit/rename and confirmed deletion. Template saving is a separate action from order submission and reports its outcome independently; it does not reserve credits. Existing order creation still handles current supplier validation, credit reservation and idempotent retries. Template selection and saving cannot replace an uncertain order attempt. Review also identified and fixed stale list responses restoring deleted cards and New request reopening the previous template's edit mode.
+
+---

@@ -148,3 +148,10 @@ PYTHONPATH=src uv run python -m unittest discover -s tests
 ```
 
 Set `ORDER_TEST_DATABASE_URL` to enable PostgreSQL tests in isolated temporary schemas.
+
+
+### Saved errand templates
+
+Authenticated users can create/list personal templates at `POST`/`GET /orders/saved-errands`, select reusable draft fields with `GET /orders/saved-errands/{id}`, and edit/delete with `PATCH`/`DELETE` on the same path. Access is scoped to the authenticated owner; another user's template returns 404. PATCH leaves omitted fields unchanged and rejects explicit null except for `pickup_notes`, which can be cleared.
+
+On Orders, fill in the request and a template name, then choose **Save as template**. **Use template** prefills an editable new request; **Edit / rename** updates the saved template. Saving a template and submitting an order are separate operations with separate feedback. Actual submission continues through the existing supplier validation, credit reservation and idempotency workflow. Changing or deleting a template does not change existing orders.

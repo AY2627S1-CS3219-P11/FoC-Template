@@ -86,3 +86,7 @@
 .historyLink:hover {
   background: #eaf0e4;
 }
+.templates { margin-bottom: 30px; }
+.templateSave { margin: 22px 0; padding: 18px; border: 1px solid #dce2d7; border-radius: 8px; }
+.templateSave button { margin: 12px 8px 0 0; }
+.templateSave p { font-size: 13px; line-height: 1.6; }

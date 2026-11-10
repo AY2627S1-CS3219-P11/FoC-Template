@@ -129,3 +129,23 @@ class SavedErrandAPITests(unittest.IsolatedAsyncioTestCase):
         self.get_saved_errand.assert_awaited_once_with(
             self.session, self.template_id, self.user.user_id,
         )
+
+    async def test_patch_rejects_explicit_null_for_required_fields(self):
+        for field in ("name", "supplier_id", "items", "delivery_location", "credits"):
+            with self.subTest(field=field):
+                response = await self.client.patch(
+                    f"/orders/saved-errands/{self.template_id}", json={field: None},
+                )
+                self.assertEqual(response.status_code, 422)
+        self.update_saved_errand.assert_not_awaited()
+
+    async def test_patch_allows_omission_and_explicit_null_notes(self):
+        self.update_saved_errand.return_value = self.template
+        for changes in ({"name": "Renamed"}, {"pickup_notes": None}, {}):
+            with self.subTest(changes=changes):
+                response = await self.client.patch(
+                    f"/orders/saved-errands/{self.template_id}", json=changes,
+                )
+                self.assertEqual(response.status_code, 200)
+                payload = self.update_saved_errand.await_args.args[3]
+                self.assertEqual(payload.model_dump(exclude_unset=True), changes)

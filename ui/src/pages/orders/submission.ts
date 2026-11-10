@@ -7,6 +7,19 @@ export const buildOrderRequest = (draft: CreateOrderRequest): CreateOrderRequest
   pickup_notes: draft.pickup_notes?.trim() || null,
 })
 
+/** Whitelist reusable inputs so template metadata never enters order creation. */
+export const templateDraft = (template: CreateOrderRequest): CreateOrderRequest => buildOrderRequest({
+  supplier_id: template.supplier_id,
+  items: template.items.map((item) => ({ name: item.name, quantity: item.quantity })),
+  delivery_location: template.delivery_location,
+  pickup_notes: template.pickup_notes,
+  credits: template.credits,
+})
+
+export const newCreationAttempt = (request: CreateOrderRequest) => ({
+  payload: JSON.stringify(request), key: crypto.randomUUID(),
+})
+
 type SubmissionAPI = {
   create: (request: CreateOrderRequest, key: string) => Promise<Order>
   update: (id: string, action: 'cancel') => Promise<Order>

@@ -18,7 +18,7 @@ Author review: I reviewed correctness and edited the changes to fit the project
 */
 
 import { useMemo } from 'react'
-import type { Order, CreateOrderRequest, CreditBalance, OrderAction } from '../pages/orders/models'
+import type { Order, CreateOrderRequest, CreditBalance, OrderAction, SavedErrand, SavedErrandRequest } from '../pages/orders/models'
 import type { ResolutionAction, RepairAction, OrderReview } from './orderOperations'
 import { makeAuthenticatedCampusErrandsAPIRequest, makeCampusErrandsAPIRequest } from './api'
 import type { AuthenticatedRequestOptions } from './api'
@@ -101,6 +101,13 @@ export const useCampusErrandsAPI = () => useMemo(() => ({
       makeAuthenticatedCampusErrandsAPIRequest<{ id: string }, null>(
         { id }, endpointConfig.supplier.suppliers.remove,
       ),
+  },
+  savedErrands: {
+    list: () => makeAuthenticatedCampusErrandsAPIRequest<null, SavedErrand[]>(null, endpointConfig.order.savedErrands.list),
+    create: (request: SavedErrandRequest) => makeAuthenticatedCampusErrandsAPIRequest<SavedErrandRequest, SavedErrand>(request, endpointConfig.order.savedErrands.create),
+    draft: (id: string) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string }, CreateOrderRequest>({ id }, endpointConfig.order.savedErrands.draft),
+    update: (id: string, request: Partial<SavedErrandRequest>) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string } & Partial<SavedErrandRequest>, SavedErrand>({ ...request, id }, endpointConfig.order.savedErrands.update),
+    remove: (id: string) => makeAuthenticatedCampusErrandsAPIRequest<{ id: string }, null>({ id }, endpointConfig.order.savedErrands.remove),
   },
   order: {
     disputed: () => makeAuthenticatedCampusErrandsAPIRequest<null, Order[]>(null, endpointConfig.order.orders.disputed),

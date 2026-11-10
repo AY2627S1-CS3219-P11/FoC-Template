@@ -61,6 +61,13 @@ export const endpointConfig = {
     },
   },
   order: {
+    savedErrands: {
+      list: { service: 'order', url: '/orders/saved-errands', verb: 'GET' },
+      create: { service: 'order', url: '/orders/saved-errands', verb: 'POST' },
+      draft: { service: 'order', url: '/orders/saved-errands/:id', verb: 'GET', fieldMap: { id: 'path' } },
+      update: { service: 'order', url: '/orders/saved-errands/:id', verb: 'PATCH', fieldMap: { id: 'path' } },
+      remove: { service: 'order', url: '/orders/saved-errands/:id', verb: 'DELETE', fieldMap: { id: 'path' } },
+    },
     orders: {
       disputed: { service: 'order', url: '/orders/admin/disputed', verb: 'GET' },
       resolve: { service: 'order', url: '/orders/admin/disputed/:id/resolve', verb: 'PATCH', fieldMap: { id: 'path' } },
