@@ -71,7 +71,27 @@ Verification:
 - Configuration and diff checks passed.
 - Docker image build was not run because the local Docker daemon is stopped.
 All changes remain uncommitted.
+---
 
+18-09-2026 20:08 | Usage Scenario: User Service SQLAlchemy session integration and authentication debugging
+
+Prompt:
+
+"how do i convert the existing code [pastes my previous code using sql] to use SQLAlchemy's asynchronous database sessions while preserving their current behaviour, i need to inject sesison to these too, please just show me the implementation with the same formatting i use"
+
+Key responses:
+
+- Assisted with updating service functions to accept asynchronous SQLAlchemy sessions.
+- Explained how database sessions should be passed from FastAPI endpoints through service and repository functions.
+- Helped troubleshoot missing session arguments in authentication dependencies.
+- Explained the difference between asynchronous functions and synchronous dependencies.
+- Assisted with correcting SQLAlchemy query result handling and Pydantic response validation.
+
+Key changes:
+
+- Updated database functions to use asynchronous SQLAlchemy sessions and queries.
+- Passed database sessions through FastAPI dependencies to the relevant service and repository functions.
+- Corrected missing session arguments and query-result handling in authentication-related code.
 ---
 19-09-2026 15:34 | Usage scenario: Add UI for profile page based on Figma Make UI Prototype
 
@@ -209,6 +229,128 @@ Verification completed:
 - No tests were added or run.
 
 Live visual verification wasn’t performed because the local UI and user-service were not running. Changes remain uncommitted.
+---
+
+16-10-2026 11:55 | Usage Scenario: Order Service setup and database models
+
+Prompt:
+
+"in neondb i see the table, but i don't see anything about order model in the code? under src/auth/models.py theres only [...] if i design one, i should probably follow how we structured thefiles/ file name for user service since i worked on that previously, how would the code look?"
+
+Key responses:
+
+- Explained the distinction between SQLAlchemy ORM models and Pydantic request/response models.
+- Provided example SQLAlchemy models based on the existing `errand_requests` schema.
+- Suggested organizing database access and API files consistently with the existing User Service.
+- Assisted with PostgreSQL enum definitions and database integration.
+
+Key changes: 
+
+- Added the SQLAlchemy ORM model for errand_requests, including order identifiers, participant IDs, credits, status, and lifecycle timestamps.
+- Configured PostgreSQL enum mapping for order statuses.
+- Separated database models from Pydantic request and response schemas, following the existing service structure.
+---
+
+17-10-2026 16:19 | Usage scenario: Order Service review and implementation assistance
+
+Prompt:
+Review the changes on my current Git branch compared with origin/main. Focus on the Order Service implementation, including its FastAPI endpoints, SQLAlchemy ORM models, repository functions, authentication, and expiry worker. Identify correctness bugs, concurrency issues, security vulnerabilities, and inconsistencies with the existing User, Supplier, and Credit Services.
+
+Follow-up prompt:
+dont change the style from the other services so much. use sqlalchemy and psycopg db operations similar style to the other services
+
+Key responses:
+- Assisted with reviewing endpoint behaviour, authorization, order transitions, transactions, and expiry handling.
+- Provided implementation assistance using asynchronous SQLAlchemy and psycopg.
+- Explained potential concurrency issues and the importance of checking order state and acceptance deadlines inside database transactions.
+- Discussed keeping the implementation consistent with the existing services.
+
+Key changes:
+- Used database row locking to serialize competing order-acceptance requests.
+- Checked order state, courier eligibility, and the acceptance deadline after acquiring the lock.
+- Kept database operations consistent with the existing asynchronous SQLAlchemy and psycopg implementation.
+
+---
+
+17-10-2026 22:16 | Usage scenario: Order-to-Credit messaging and result handling
+
+Prompt:
+please implement the required changes so that my credit reservation (to go from pending -> open), release and transfer is closer to credit service. refer to the implementation of credit service. do not use unnecessary complex stuff or other unnecessary things
+
+Key responses:
+- Assisted with implementing Order-side credit commands, the transactional command outbox, and Credit result consumption.
+- Explained saving order changes and their associated commands in the same database transaction.
+- Explained retaining stable request IDs so repeated messages do not repeat credit movements.
+- Provided guidance on result-driven order transitions and recovery when publication or result delivery is delayed.
+
+Key changes:
+
+- Made reserve, release, and transfer command payloads compatible with Credit Service.
+- Saved order changes and their associated credit commands in the same database transaction.
+- Added a RabbitMQ command publisher and a consumer for CreditOperationResult messages.
+- Stored result receipts to recognize duplicate results and correlate them with the original commands.
+---
+
+18-10-2026 02:11 | Usage scenario: Order Service startup refactoring
+
+Prompt:
+and can main.py for order service also be closer to how credit service is run?
+
+Key responses:
+- Compared Order and Credit Service initialization.
+- Moved Order database initialization, messaging setup, expiry-worker startup, and cleanup into orders/bootstrap.py.
+- Simplified main.py to use initialize_order_service().
+- Explained why Order did not need RabbitMQ resources stored in app.state when workers already receive them directly.
+
+Key changes:
+- Introduced initialize_order_service() in orders/bootstrap.py to encapsulate database, messaging, and expiry-worker initialization.
+- Simplified main.py to enter the initialization context during application lifespan.
+- Preserved worker cancellation and resource cleanup on shutdown.
+
+---
+
+18-10-2026 02:15 | Usage scenario: Outbox publisher simplification and explanation
+
+Prompt:
+then, for the simplified outbox.py, how would the new code look like (so it matches more closely to credit) and still works?
+
+Follow-up prompt:
+yes, pls proceed with the porposed simplification and retain existing retry and result recovery logic. thank you
+
+Key responses:
+- Proposed and implemented moving command selection and locking into find_pending_credit_command() in the repository.
+- Simplified transaction handling using session_factory.begin().
+- Used the publish timeout argument consistently with Credit Service.
+- Preserved retry delays, stable request IDs, publisher confirmations, and replay of commands without recorded results.
+- Explained the difference between RabbitMQ publication confirmation and successful Credit processing.
+Key changes:
+- Moved pending-command selection into find_pending_credit_command() in the repository.
+- Simplified publisher transaction handling using session_factory.begin().
+- Aligned RabbitMQ publication with Credit Service's persistent messages, publisher confirmations, and publish-timeout argument.
+- Preserved row locking, retry scheduling, and replay of commands whose results had not been recorded.
+
+---
+
+20-10-2026 21:59 | Usage Scenario: Centralized logging implementation support
+
+Prompt:
+
+"what is a good way i can implement centralized logging, I searched online and found Grafana"
+
+Key responses:
+
+- Explained structured logging and how logs can be collected from multiple Docker containers.
+- Provided implementation guidance for Grafana Alloy, Loki, and Grafana.
+- Explained log formatting, collection, and querying.
+- Assisted with understanding correlation identifiers and debugging across HTTP and RabbitMQ operations.
+- Discussed the distinction between application logs and database audit records.
+
+Key changes:
+
+- Added structured JSON logging with service names, timestamps, severity levels, and relevant operation identifiers.
+- Included order and command identifiers in RabbitMQ processing and retry logs.
+- Configured Grafana Alloy to collect Docker container logs and forward them to Loki.
+- Added Grafana's Loki datasource configuration for querying collected logs.
 
 ---
 27-10-2026 17:26 | Usage scenario: Use ChatGPT to create UI for credit audit log page
