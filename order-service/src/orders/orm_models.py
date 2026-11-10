@@ -129,6 +129,43 @@ class ErrandRequest(Base):
     )
 
 
+class SavedErrand(Base):
+    """A reusable requester-owned order draft, deliberately separate from order history."""
+
+    __tablename__ = "saved_errands"
+
+    id: Mapped[UUID] = mapped_column(
+        PostgresUUID(as_uuid=True), primary_key=True, default=uuid4,
+    )
+    owner_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    supplier_id: Mapped[UUID] = mapped_column(PostgresUUID(as_uuid=True), nullable=False)
+    items: Mapped[list | dict] = mapped_column(JSONB, nullable=False)
+    delivery_location: Mapped[str] = mapped_column(Text, nullable=False)
+    pickup_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    credits: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.clock_timestamp(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=func.clock_timestamp(),
+    )
+
+    __table_args__ = (
+        CheckConstraint("credits >= 1", name="saved_errands_credits_check"),
+        CheckConstraint(
+            "char_length(name) BETWEEN 1 AND 100 AND name ~ '[^[:space:]]'",
+            name="ck_saved_errands_name",
+        ),
+        CheckConstraint(
+            "char_length(delivery_location) BETWEEN 1 AND 500 "
+            "AND delivery_location ~ '[^[:space:]]'",
+            name="ck_saved_errands_delivery_location",
+        ),
+        Index("saved_errands_owner_updated_at_idx", "owner_id", "updated_at"),
+    )
+
+
 class OrderDispute(Base):
     """A review case orthogonal to the order's fulfilment milestone."""
 

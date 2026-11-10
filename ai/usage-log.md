@@ -327,3 +327,13 @@ Key responses:
 Added five API contract tests for `/orders/saved-errands`. The red test run confirms they fail because saved-errand routes are not implemented yet; expected creation/list/selection responses currently return 405, 422 or 404. The ownership tests first require successful creation, preventing absent routes from falsely satisfying access-control expectations.
 
 ---
+
+09-11-2026 | Usage scenario: Implement saved-errand backend
+
+Prompt:
+Add a `SavedErrand` ORM model to Order Service, create schemas for create/update/response/draft, add owner-scoped repository functions and `/orders/saved-errands` CRUD routes, then run the five tests until they pass.
+
+Key responses:
+Implemented the saved-errand template backend in Order Service: an owner-indexed `saved_errands` model; create, partial-update, response and draft schemas; owner-scoped repository operations; and CRUD routes at `/orders/saved-errands`. Selecting a template returns only editable new-order fields, never lifecycle, reservation or deadline data. The five contract tests and changed-file Ruff checks pass; no UI or deployment changes were made.
+
+---

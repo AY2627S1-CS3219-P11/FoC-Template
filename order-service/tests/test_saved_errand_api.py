@@ -1,7 +1,9 @@
 """Saved-errand API contract, written before its implementation."""
 
 import unittest
-from unittest.mock import AsyncMock
+from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import httpx
@@ -28,6 +30,25 @@ class SavedErrandAPITests(unittest.IsolatedAsyncioTestCase):
             "pickup_notes": "Less ice, please",
             "credits": 8,
         }
+        self.template = SimpleNamespace(
+            id=self.template_id,
+            owner_id=self.user.user_id,
+            name=self.payload["name"],
+            supplier_id=self.supplier_id,
+            items=self.payload["items"],
+            delivery_location=self.payload["delivery_location"],
+            pickup_notes=self.payload["pickup_notes"],
+            credits=self.payload["credits"],
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+        self.create_saved_errand = self._patch_repository(
+            "create_saved_errand", self.template,
+        )
+        self.list_saved_errands = self._patch_repository("list_saved_errands", [])
+        self.get_saved_errand = self._patch_repository("get_saved_errand", self.template)
+        self.update_saved_errand = self._patch_repository("update_saved_errand", None)
+        self.delete_saved_errand = self._patch_repository("delete_saved_errand", False)
         self.app = FastAPI()
         self.app.include_router(views.router)
         self.app.dependency_overrides = {
@@ -38,6 +59,13 @@ class SavedErrandAPITests(unittest.IsolatedAsyncioTestCase):
             transport=httpx.ASGITransport(app=self.app), base_url="http://test",
         )
         self.addAsyncCleanup(self.client.aclose)
+
+    def _patch_repository(self, name, return_value):
+        mock = AsyncMock(return_value=return_value)
+        patcher = patch.object(views, name, mock)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        return mock
 
     async def test_create_template_returns_only_reusable_request_fields(self):
         response = await self.client.post("/orders/saved-errands", json=self.payload)
@@ -54,36 +82,41 @@ class SavedErrandAPITests(unittest.IsolatedAsyncioTestCase):
             "status", "courier_id", "expires_at", "credit_status", "credit_operation",
         ):
             self.assertNotIn(order_only_field, saved)
+        self.create_saved_errand.assert_awaited_once()
 
     async def test_list_returns_only_the_authenticated_users_templates(self):
         response = await self.client.get("/orders/saved-errands")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), [])
+        self.list_saved_errands.assert_awaited_once_with(self.session, self.user.user_id)
 
     async def test_update_requires_ownership(self):
         created = await self.client.post("/orders/saved-errands", json=self.payload)
         self.assertEqual(created.status_code, 201)
-        self.app.dependency_overrides[get_authenticated_user] = lambda: UserRoleResponse(
-            user_id=uuid4(), role="user",
-        )
+        other_user = UserRoleResponse(user_id=uuid4(), role="user")
+        self.app.dependency_overrides[get_authenticated_user] = lambda: other_user
 
         response = await self.client.patch(
             f"/orders/saved-errands/{created.json()['id']}", json={"name": "Changed"},
         )
 
         self.assertEqual(response.status_code, 404)
+        self.update_saved_errand.assert_awaited_once()
+        self.assertEqual(self.update_saved_errand.await_args.args[2], other_user.user_id)
 
     async def test_delete_requires_ownership(self):
         created = await self.client.post("/orders/saved-errands", json=self.payload)
         self.assertEqual(created.status_code, 201)
-        self.app.dependency_overrides[get_authenticated_user] = lambda: UserRoleResponse(
-            user_id=uuid4(), role="user",
-        )
+        other_user = UserRoleResponse(user_id=uuid4(), role="user")
+        self.app.dependency_overrides[get_authenticated_user] = lambda: other_user
 
         response = await self.client.delete(f"/orders/saved-errands/{created.json()['id']}")
 
         self.assertEqual(response.status_code, 404)
+        self.delete_saved_errand.assert_awaited_once_with(
+            self.session, self.template_id, other_user.user_id,
+        )
 
     async def test_template_selection_returns_an_editable_order_draft(self):
         response = await self.client.get(f"/orders/saved-errands/{self.template_id}")
@@ -93,3 +126,6 @@ class SavedErrandAPITests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(draft), {
             "supplier_id", "items", "delivery_location", "pickup_notes", "credits",
         })
+        self.get_saved_errand.assert_awaited_once_with(
+            self.session, self.template_id, self.user.user_id,
+        )

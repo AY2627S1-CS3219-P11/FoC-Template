@@ -22,6 +22,8 @@ from orders.presentation import present_order, present_orders
 from orders.repository import (
     accept_order,
     cancel_order,
+    create_saved_errand,
+    delete_saved_errand,
     deliver_order,
     dispute_order,
     get_assigned_orders,
@@ -29,20 +31,27 @@ from orders.repository import (
     get_order_audit_logs,
     get_order_by_id,
     get_requested_orders,
+    get_saved_errand,
+    list_saved_errands,
     pickup_order,
     receive_order,
+    update_saved_errand,
 )
 from orders.review import order_review
 from orders.schemas import (
     CreateOrderRequest,
+    CreateSavedErrandRequest,
     DisputeOrderRequest,
     OrderAuditLogResponse,
     OrderResponse,
     OrderReviewResponse,
     RepairSettlementRequest,
     ResolveOrderRequest,
+    SavedErrandDraft,
+    SavedErrandResponse,
     ServerClockResponse,
     SupplierSnapshot,
+    UpdateSavedErrandRequest,
 )
 
 logger = logging.getLogger(__name__)
@@ -127,6 +136,50 @@ async def list_requested_orders(user: AuthenticatedUser, session: Session):
 @router.get("/me/assigned", response_model=list[OrderResponse])
 async def list_assigned_orders(user: AuthenticatedUser, session: Session):
     return await present_orders(session, await get_assigned_orders(session, user.user_id), user.user_id)
+
+
+@router.post("/saved-errands", response_model=SavedErrandResponse, status_code=status.HTTP_201_CREATED)
+async def create_saved_errand_endpoint(
+    payload: CreateSavedErrandRequest, user: AuthenticatedUser, session: Session,
+):
+    return await create_saved_errand(session, user.user_id, payload)
+
+
+@router.get("/saved-errands", response_model=list[SavedErrandResponse])
+async def list_saved_errands_endpoint(user: AuthenticatedUser, session: Session):
+    return await list_saved_errands(session, user.user_id)
+
+
+@router.get("/saved-errands/{saved_errand_id}", response_model=SavedErrandDraft)
+async def saved_errand_draft_endpoint(
+    saved_errand_id: UUID, user: AuthenticatedUser, session: Session,
+):
+    saved_errand = await get_saved_errand(session, saved_errand_id, user.user_id)
+    if saved_errand is None:
+        raise HTTPException(status_code=404, detail="Saved errand not found")
+    return saved_errand
+
+
+@router.patch("/saved-errands/{saved_errand_id}", response_model=SavedErrandResponse)
+async def update_saved_errand_endpoint(
+    saved_errand_id: UUID,
+    payload: UpdateSavedErrandRequest,
+    user: AuthenticatedUser,
+    session: Session,
+):
+    saved_errand = await update_saved_errand(session, saved_errand_id, user.user_id, payload)
+    if saved_errand is None:
+        raise HTTPException(status_code=404, detail="Saved errand not found")
+    return saved_errand
+
+
+@router.delete("/saved-errands/{saved_errand_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_saved_errand_endpoint(
+    saved_errand_id: UUID, user: AuthenticatedUser, session: Session,
+):
+    if not await delete_saved_errand(session, saved_errand_id, user.user_id):
+        raise HTTPException(status_code=404, detail="Saved errand not found")
+
 
 # list specific order, either requested/assigned
 @router.get("/{order_id}", response_model=OrderResponse)
