@@ -71,6 +71,17 @@ Verification:
 - Configuration and diff checks passed.
 - Docker image build was not run because the local Docker daemon is stopped.
 All changes remain uncommitted.
+
+---
+
+18-09-2026 | Usage scenario: Supplier page, API integration and authentication
+
+Prompt:
+Connect a Suppliers page to the existing Supplier Service API. Add supplier browsing/search, admin create/edit/remove forms, API bindings and navigation. Replace the supplier authentication stub with User Service session verification, enforce admin/admin-manager access for mutations, and update local setup instructions and tests.
+
+Key responses:
+Added the Suppliers route, page, models and styling; connected list/create/update/remove calls through the shared API configuration and hook; added search and admin-only editing/removal controls. Replaced the hard-coded supplier admin identity with cookie-based verification through `/authentication/sessions/current`, including 401/403/503 handling. Updated Home/navigation, development proxy, service configuration, dependency files and setup documentation. Extended supplier tests for authentication forwarding, rejected/missing tokens, authorization and unavailable authentication.
+
 ---
 
 18-09-2026 20:08 | Usage Scenario: User Service SQLAlchemy session integration and authentication debugging
@@ -229,6 +240,104 @@ Verification completed:
 - No tests were added or run.
 
 Live visual verification wasn’t performed because the local UI and user-service were not running. Changes remain uncommitted.
+
+---
+06-10-2026 21:38 | Usage scenario: Use ChatGPT to generate boiler template for credit service
+
+Prompt:
+In credit-service folder, can you follow the format in user-service e.g. main.py, db.py and views.py those. I want you to create the db engine using sql alchemy. Whatever that is in .env and .env example must be similar too. Do use rabbitMQ. You can get the references from supplier-service + .env files from it too
+
+Key responses:
+Credit Service is currently empty. I recommend User Service’s split structure over Supplier Service’s single-file layout:
+
+- `src/main.py` for startup and shutdown.
+- `src/common/config_manager.py` for `.env` settings.
+- `src/common/db.py` for the async SQLAlchemy engine and sessions.
+- `src/credit/views.py` for routes, starting with `/health`.
+- RabbitMQ connection/channel setup following Supplier Service.
+- Dependencies and Docker setup matching the sibling services.
+
+The ignored `.env` will contain your supplied database URL using `postgresql+psycopg://`, matching User Service and [SQLAlchemy’s async driver format](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#module-sqlalchemy.dialects.postgresql.psycopg). `.env.example` will use placeholders and the same key-per-line format.
+
+---
+07-10-2026 16:52 | Usage scenario: Use ChatGPT to implement the user registration and credit allocation flow
+
+Prompt:
+Implement the signup-to-credit-account workflow using RabbitMQ, following the existing User Service and Supplier Service conventions. In both User Service and Credit Service, declare a durable DIRECT exchange named user_events during lifespan initialization and store the returned exchange in app.state.user_exchange, alongside the connection and channel, so it can be reused. After a user is successfully committed to the database, User Service should publish a persistent UserCreated event with routing key user.created, containing the actual stored user ID and creation timestamp. In Credit Service, declare a durable, non-exclusive queue named credit_user_created, bind it to that exchange with binding key user.created, and start consuming during startup. For each event, insert a credit account using the same user UUID, available_credits = 100, reserved_credits = 0, and the event’s creation timestamp for both initial created_at and updated_at, do not generate a separate timestamp. Make processing idempotent duplicate events must leave an existing account and its balance unchanged. Acknowledge the message only after the database operation commits successfully, and handle publication or processing failures so registration events are not silently lost. Follow the existing SQLAlchemy model and startup table-creation approach without adding a separate .sql file.
+
+---
+07-10-2026 17:53 | Usage scenario: Use ChatGPT to implement credit audit logs for backend
+
+Prompt: 
+Create the SQLAlchemy schema for a credit_audit_logs table in Credit Service, following the existing conventions in credit-service/src/credit/orm_models.py and reusing its declarative Base. Add a CreditAuditLog model with these fields: log_id as a UUID primary key generated with uuid4; user_id as a non-null UUID identifying the credit owner; recipient_user_id as a nullable UUID identifying the courier receiving a transfer; order_id as a nullable UUID; action as non-null text; amount as a non-null BigInteger; and created_at as a non-null DateTime(timezone=False) with no Python or database default, supplied by the application as the operation’s UTC timestamp without timezone information. Add named check constraints allowing only INITIAL_ALLOCATION, RESERVE, RELEASE, and TRANSFER; requiring amount > 0; requiring a recipient different from user_id for transfers and no recipient for other actions; and requiring no order ID for initial allocation but an order ID for all other actions. Do not add cross-database foreign keys, reason, operation_id, updated_at, compensation actions, or a separate .sql file. Ensure the model is included in the existing startup table-creation flow.
+
+Dont include anything else please
+
+Key responses:
+Added `CreditAuditLog` in [orm_models.py](/Users/weihungloh/FoC-Template/credit-service/src/credit/orm_models.py) with exactly the requested fields and named constraints. The shared `Base` includes it in startup table creation automatically.
+
+Verified PostgreSQL DDL and constraint behavior locally. Only this file changed; nothing committed.
+
+---
+
+10-10-2026 | Usage scenario: Initial Keycloak infrastructure and realm configuration
+
+Prompt:
+Set up Keycloak for Campus Errands using Docker Compose and a dedicated PostgreSQL database. Add a foc realm, user/admin/admin_manager roles, a public UI client using PKCE, an API audience and environment examples, and explain how to start it.
+
+Key responses:
+Added root Compose integration, `keycloak/compose.yaml`, a persistent Keycloak database volume, `keycloak/realms/foc-realm.json`, environment examples and a root README introduction. This was infrastructure for the proposed authentication migration.
+
+---
+
+10-10-2026 | Usage scenario: Shared Keycloak token validation for backend services
+
+Prompt:
+Create a shared Python package for validating Keycloak access tokens and reuse it in Supplier and User Services. Validate signing keys, issuer, audience, expiry and application roles; retain explicit legacy/Keycloak configuration during the migration, and add validation and endpoint tests.
+
+Key responses:
+Added the `packages/foc-auth` validation package and tests; integrated Keycloak-aware dependencies/configuration into Supplier and User Services; updated Docker build contexts, Compose/environment configuration and dependency locks. The validator checks RS256 access-token claims, UUID subjects and the application role hierarchy and distinguishes token rejection from authentication infrastructure failures.
+
+---
+
+10-10-2026 | Usage scenario: Keycloak setup and backend validation documentation
+
+Prompt:
+Document the Keycloak setup, shared authentication package and backend validation added in the preceding commits. Explain configuration, startup, expected roles and how to run the authentication tests across the affected services.
+
+Key responses:
+Added `keycloak/README.md` and `packages/foc-auth/README.md`, and updated the root, Supplier and User Service READMEs to describe the proposed authentication setup and validation.
+
+---
+
+11-10-2026 | Usage scenario: Keycloak browser authentication and user account integration
+
+Prompt:
+Connect the React UI and User Service account flows to Keycloak. Add browser login/token handling and silent SSO, configure the realm and backend administration client, preserve local user identity mapping, and support account lookup/update and role-management operations with tests and migration helpers.
+
+Key responses:
+Added the UI Keycloak client/bootstrap, silent SSO support and API authentication changes; extended realm/configuration automation; added User Service Keycloak administration, identity import/export/bootstrap and account-management integration. Updated shared validator behaviour, container/environment configuration and account/admin tests.
+
+---
+
+11-10-2026 | Usage scenario: Keycloak authentication-flow and migration documentation
+
+Prompt:
+Update the Keycloak, shared-auth, Supplier, User and UI documentation to match the integrated browser and account-management flows. Explain service configuration, bootstrap/import steps, authentication behaviour and the migration/testing workflow.
+
+Key responses:
+Revised five READMEs to describe the Keycloak integration after the browser and account changes, including configuration, identity management and service authentication responsibilities.
+
+---
+
+12-10-2026 | Usage scenario: Campus Errands theme for Keycloak login
+
+Prompt:
+Style the Keycloak login experience to match Campus Errands. Add the login templates, footer, messages and CSS, and configure the realm/setup script to select the custom theme.
+
+Key responses:
+Added the `keycloak/themes/campus-errands/login/` FreeMarker templates, CSS, message overrides and theme properties. Updated the realm, configuration script and environment example to select the custom theme.
+
 ---
 
 16-10-2026 11:55 | Usage Scenario: Order Service setup and database models
@@ -370,41 +479,14 @@ The page sits below Profile, fetches your logs, supports mobile layouts, shows �
 Build, lint and all 32 existing checks pass. Browser checks used simulated API responses. Nothing committed.
 
 ---
-06-10-2026 21:38 | Usage scenario: Use ChatGPT to generate boiler template for credit service
+
+01-11-2026 | Usage scenario: Integration of centralized logging PR #31
 
 Prompt:
-In credit-service folder, can you follow the format in user-service e.g. main.py, db.py and views.py those. I want you to create the db engine using sql alchemy. Whatever that is in .env and .env example must be similar too. Do use rabbitMQ. You can get the references from supplier-service + .env files from it too
+Review and integrate the centralised-logging branch while retaining the existing service startup, request handling and messaging behaviour.
 
 Key responses:
-Credit Service is currently empty. I recommend User Service’s split structure over Supplier Service’s single-file layout:
-
-- `src/main.py` for startup and shutdown.
-- `src/common/config_manager.py` for `.env` settings.
-- `src/common/db.py` for the async SQLAlchemy engine and sessions.
-- `src/credit/views.py` for routes, starting with `/health`.
-- RabbitMQ connection/channel setup following Supplier Service.
-- Dependencies and Docker setup matching the sibling services.
-
-The ignored `.env` will contain your supplied database URL using `postgresql+psycopg://`, matching User Service and [SQLAlchemy’s async driver format](https://docs.sqlalchemy.org/en/20/dialects/postgresql.html#module-sqlalchemy.dialects.postgresql.psycopg). `.env.example` will use placeholders and the same key-per-line format.
-
----
-07-10-2026 16:52 | Usage scenario: Use ChatGPT to implement the user registration and credit allocation flow
-
-Prompt:
-Implement the signup-to-credit-account workflow using RabbitMQ, following the existing User Service and Supplier Service conventions. In both User Service and Credit Service, declare a durable DIRECT exchange named user_events during lifespan initialization and store the returned exchange in app.state.user_exchange, alongside the connection and channel, so it can be reused. After a user is successfully committed to the database, User Service should publish a persistent UserCreated event with routing key user.created, containing the actual stored user ID and creation timestamp. In Credit Service, declare a durable, non-exclusive queue named credit_user_created, bind it to that exchange with binding key user.created, and start consuming during startup. For each event, insert a credit account using the same user UUID, available_credits = 100, reserved_credits = 0, and the event’s creation timestamp for both initial created_at and updated_at, do not generate a separate timestamp. Make processing idempotent duplicate events must leave an existing account and its balance unchanged. Acknowledge the message only after the database operation commits successfully, and handle publication or processing failures so registration events are not silently lost. Follow the existing SQLAlchemy model and startup table-creation approach without adding a separate .sql file.
-
----
-07-10-2026 17:53 | Usage scenario: Use ChatGPT to implement credit audit logs for backend
-
-Prompt: 
-Create the SQLAlchemy schema for a credit_audit_logs table in Credit Service, following the existing conventions in credit-service/src/credit/orm_models.py and reusing its declarative Base. Add a CreditAuditLog model with these fields: log_id as a UUID primary key generated with uuid4; user_id as a non-null UUID identifying the credit owner; recipient_user_id as a nullable UUID identifying the courier receiving a transfer; order_id as a nullable UUID; action as non-null text; amount as a non-null BigInteger; and created_at as a non-null DateTime(timezone=False) with no Python or database default, supplied by the application as the operation’s UTC timestamp without timezone information. Add named check constraints allowing only INITIAL_ALLOCATION, RESERVE, RELEASE, and TRANSFER; requiring amount > 0; requiring a recipient different from user_id for transfers and no recipient for other actions; and requiring no order ID for initial allocation but an order ID for all other actions. Do not add cross-database foreign keys, reason, operation_id, updated_at, compensation actions, or a separate .sql file. Ensure the model is included in the existing startup table-creation flow.
-
-Dont include anything else please
-
-Key responses:
-Added `CreditAuditLog` in [orm_models.py](/Users/weihungloh/FoC-Template/credit-service/src/credit/orm_models.py) with exactly the requested fields and named constraints. The shared `Base` includes it in startup table creation automatically.
-
-Verified PostgreSQL DDL and constraint behavior locally. Only this file changed; nothing committed.
+Merged the team centralised-logging PR. Its incoming files include logging configuration, observability provisioning and request/message logging changes.
 
 ---
 
@@ -460,6 +542,26 @@ Recommended an Order-owned `saved_errands` template table rather than references
 
 ---
 
+07-11-2026 | Usage scenario: Integration of delivery-location PR #32
+
+Prompt:
+Merge the delivery-location refactor after reviewing its backend validation, idempotency handling and UI display changes. Preserve existing order processing and keep pickup notes independent from the required destination.
+
+Key responses:
+Merged the delivery-location work from `184772e`, `0ec79ac` and `a3ac530`. The merge introduces no separate feature beyond those commits.
+
+---
+
+08-11-2026 | Usage scenario: README contribution summary for Kenneth
+
+Prompt:
+Update my team-member entry in the README to describe supplier-page/API integration, the cancelled Keycloak rollout, the delivery-location refactor and the planned saved-errand nice-to-have.
+
+Key responses:
+Updated Kenneth's contribution row in the root README. The row identifies the Keycloak rollout as cancelled and describes the saved-template feature as reusing request details while preserving current supplier and credit checks.
+
+---
+
 09-11-2026 | Usage scenario: Add failing saved-errand API contract tests
 
 Prompt:
@@ -501,3 +603,15 @@ Fetched Team P11 origin/main at f025c35 and merged it locally without committing
 
 Verification:
 40 UI tests passed; 23 Order Service tests passed with 14 database tests skipped. Node 22 production build passed and UI lint passed with the existing audit-log warning. An incoming deployment test fails on macOS because deploy/aws-env.sh uses chmod 700 --; this file was preserved from main. Changes are staged for the user's merge commit; nothing was committed or pushed by Codex.
+
+---
+
+10-11-2026 | Usage scenario: Final saved-template PR review and database verification
+
+Prompt:
+"do one last PR review before I merge"
+
+Key responses:
+Reviewed PR #36 against the fetched main branch and performed an independent code review. All 40 UI tests and all 37 Order Service tests passed when the database suite was enabled against local PostgreSQL, with zero skips. An additional temporary real-API/repository check verified saved-template persistence and CRUD, two-user owner isolation, rejection of null/empty required inputs, and no order or credit-command creation when saving. Temporary database schemas were removed; Neon was not accessed. Node 22 build, UI lint (with the existing audit-log warning), changed-file Ruff and PR diff checks passed. Identified the remaining repository test-coverage gap: the committed saved-template API tests mock persistence, and the extra PostgreSQL harness was a temporary review check rather than a checked-in regression test. No source changes, commits or pushes were made during that review.
+
+---
