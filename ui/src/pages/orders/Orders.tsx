@@ -12,6 +12,7 @@ import { orderNotice, type OrderNotice } from './notifications'
 import { isRetryableSubmissionError, submitWithRetry } from './submission'
 import type { CreateOrderRequest } from './models'
 import { canApplyOrderPoll, orderPollingGeneration } from '../../api/orderDemo'
+import { v4 as uuidv4 } from 'uuid'
 
 type View = 'open' | 'requested' | 'assigned'
 type Resource = View | 'credits' | 'suppliers'
@@ -152,7 +153,7 @@ const Orders = () => {
     submissionController.current = controller
     setSubmissionMessage(cancellationIntent.current ? 'Recovering the request to confirm cancellation…' : 'Submitting request…')
     try {
-      const attempt = creationAttempt ?? { payload, key: crypto.randomUUID() }
+      const attempt = creationAttempt ?? { payload, key: uuidv4() }
       setCreationAttempt(attempt)
       const { order: created, cancellationUnavailable } = await submitWithRetry({
         api: api.order, request, key: attempt.key, signal: controller.signal,
