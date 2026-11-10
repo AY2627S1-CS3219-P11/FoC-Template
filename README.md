@@ -40,6 +40,10 @@ The gateway is container-network-only; RabbitMQ and databases use separate conne
 
 ## Deployment
 
+For the ECS Fargate coursework demo, see [AWS deployment instructions](deploy/AWS.md)
+and the implementation status in [report.md](report.md). Infrastructure is under
+`deploy/terraform/`; AWS resources are created only when you explicitly apply a plan.
+
 Deployment is a full cutover: reset the application databases and RabbitMQ queues
 before starting the new stack. Confirm the exact targets before deleting data,
 including on hosted/shared infrastructure. Services create tables from current
