@@ -59,8 +59,11 @@ supported. Startup does not automatically delete databases or queues.
 **Usage:**
 - Generated initial React/Vite and FastAPI boilerplate and configuration.
 - Assisted with frontend components, API integration, authentication, and administrative interfaces.
+- Assisted with converting User Service database operations to asynchronous SQLAlchemy sessions.
 - Assisted with Credit Service implementation, SQLAlchemy models, RabbitMQ messaging, and credit operations based on provided specifications.
 - Assisted with initial Supplier and Order service implementations, SQLAlchemy models, RabbitMQ messaging based on provided specifications.
+- Assisted with selected Order Service changes, including lifecycle handling, credit messaging, and outbox refactoring.
+- Assisted with centralized logging using Grafana Alloy, Loki, and Grafana, including structured logs and correlation identifiers.
 - Supported refactoring, debugging, testing, and documentation.
 
 **Verification:** AI-assisted code was reviewed and modified by team members, with verification details recorded where applicable.
