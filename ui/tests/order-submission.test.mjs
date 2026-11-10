@@ -1,11 +1,12 @@
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import ts from 'typescript'
 
 const directory = await mkdtemp(join(tmpdir(), 'order-submission-'))
+await symlink(new URL('../node_modules', import.meta.url), join(directory, 'node_modules'), 'dir')
 const source = await readFile(new URL('../src/pages/orders/submission.ts', import.meta.url), 'utf8')
 await writeFile(join(directory, 'submission.mjs'), ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },

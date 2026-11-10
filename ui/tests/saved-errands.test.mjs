@@ -1,11 +1,12 @@
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import ts from 'typescript'
 
 const directory = await mkdtemp(join(tmpdir(), 'saved-errands-'))
+await symlink(new URL('../node_modules', import.meta.url), join(directory, 'node_modules'), 'dir')
 const source = await readFile(new URL('../src/pages/orders/submission.ts', import.meta.url), 'utf8')
 await writeFile(join(directory, 'submission.mjs'), ts.transpileModule(source, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022 },
@@ -38,4 +39,21 @@ test('each new template order gets a fresh key while retries keep the frozen pay
   assert.equal(calls.length, 2)
   assert.deepEqual(calls[0], calls[1])
   assert.equal(calls[0].request.items[0].name, 'Tea')
+})
+
+
+test('new order attempts work when crypto.randomUUID is unavailable', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto')
+  const webCrypto = globalThis.crypto
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: { getRandomValues: webCrypto.getRandomValues.bind(webCrypto) },
+  })
+  try {
+    const attempt = submission.newCreationAttempt(submission.templateDraft(template))
+    assert.match(attempt.key, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)
+    assert.equal(JSON.parse(attempt.payload).delivery_location, 'COM2')
+  } finally {
+    Object.defineProperty(globalThis, 'crypto', original)
+  }
 })

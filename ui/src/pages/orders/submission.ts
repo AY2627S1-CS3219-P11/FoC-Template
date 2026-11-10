@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid'
 import type { CreateOrderRequest, Order } from './models'
 
 export const buildOrderRequest = (draft: CreateOrderRequest): CreateOrderRequest => ({
@@ -17,7 +18,7 @@ export const templateDraft = (template: CreateOrderRequest): CreateOrderRequest 
 })
 
 export const newCreationAttempt = (request: CreateOrderRequest) => ({
-  payload: JSON.stringify(request), key: crypto.randomUUID(),
+  payload: JSON.stringify(request), key: uuidv4(),
 })
 
 type SubmissionAPI = {
