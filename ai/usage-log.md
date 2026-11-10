@@ -501,3 +501,25 @@ Fetched Team P11 origin/main at f025c35 and merged it locally without committing
 
 Verification:
 40 UI tests passed; 23 Order Service tests passed with 14 database tests skipped. Node 22 production build passed and UI lint passed with the existing audit-log warning. An incoming deployment test fails on macOS because deploy/aws-env.sh uses chmod 700 --; this file was preserved from main. Changes are staged for the user's merge commit; nothing was committed or pushed by Codex.
+
+---
+
+05-11-2026 | Usage scenario: Discuss AWS deployment and draft Terraform setup
+
+Prompt (approximate reconstruction, not a verbatim quote):
+Help me work out how to deploy this project on AWS for a short coursework demo using Terraform. Discuss the options and trade-offs with me, including how the services, RabbitMQ, Neon databases, networking and secrets should fit together. Turn the agreed approach into a deployment design, implementation plan and initial Terraform configuration. Do not provision AWS resources yet.
+
+Key responses (summary, not a verbatim quote):
+Helped the user reason through the deployment rather than only generating configuration: discussed separate ECS Fargate services, ALB access for the UI and backend Swagger pages, private managed RabbitMQ, and externally supplied Neon databases. Made demo-scope trade-offs explicit, including public-subnet tasks without a NAT gateway, a single-instance broker, restricted inbound access, HTTP limitations and ongoing AWS costs. Clarified safe credential/state handling and a staged setup so images and secrets are ready before services start.
+
+Recorded the agreed decisions in an AWS deployment design and task-by-task plan, then assisted with the initial Terraform setup under `deploy/terraform/` and deployment instructions in `deploy/AWS.md`. The recorded handoff reported local Terraform validation and mock-provider tests; it did not claim a live AWS deployment. The design and plan originally lived under `docs/superpowers/`; this entry preserves a summary of that assistance after those planning documents were removed.
+
+---
+
+Date not recorded | Usage scenario: Set up the Nginx internal gateway
+
+Prompt (approximate reconstruction, not a verbatim quote):
+Help me set up Nginx as an internal gateway for the User, Supplier, Order and Credit services in Docker Compose. Route the frontend API calls through it, explain the service URLs and configuration I need, and keep authentication in the backend services.
+
+Key responses (summary, not a verbatim quote):
+Assisted with the Nginx gateway and UI proxy configuration so requests follow Browser → UI Nginx → internal gateway → backend service. Configured service-specific API prefixes, stripping only the prefix while forwarding request details, authentication headers, cookies and backend status codes. Explained the distinction between browser-facing URLs and Docker-internal service addresses, and how environment-supplied upstream URLs and DNS resolution support the setup. The gateway remains internal to Compose rather than publishing an additional host port; setup and troubleshooting instructions are documented in `internal-gateway/README.md`.
