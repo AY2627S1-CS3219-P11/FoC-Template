@@ -1,3 +1,12 @@
+# AI assistance disclosure:
+# Tool: ChatGPT (model: GPT-6 Sol), date: 2026-10-17
+# Scope: Assisted with reviewing and implementing order-transition checks, acceptance deadlines, and concurrency handling
+# Author review: I reviewed correctness and edited the changes to fit the project
+# 
+# Tool: ChatGPT (model: GPT-6 Sol), date: 2026-10-18
+# Scope: Extracted pending-command selection and row locking from the outbox publishe, simplify outbox
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 from datetime import datetime, timedelta
 from uuid import UUID, uuid4
 

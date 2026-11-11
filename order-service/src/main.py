@@ -1,3 +1,12 @@
+# AI assistance disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol), date: 2026-10-18
+# Scope: Assisted with refactoring database, messaging, and worker lifecycle initialization and cleanup
+# Author review: I reviewed correctness and edited the changes to fit the project
+# 
+# Tool: ChatGPT (model: GPT-6.1 Sol), date: 2026-10-18
+# Scope: service/src/workers/outbox.py	Simplified transaction handling and publication timeout configuration while retaining retry and recovery behaviour
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 import asyncio
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from http.cookiejar import CookieJar, DefaultCookiePolicy

@@ -1,3 +1,8 @@
+# AI assistance disclosure:
+# Tool: ChatGPT (model: GPT-6.1 Sol), date: 2026-10-17
+# Scope: Assisted with credit-result consumption, validation, and acknowledgement after database commit
+# Author review: I reviewed correctness and edited the changes to fit the project
+
 import asyncio
 import logging
 
